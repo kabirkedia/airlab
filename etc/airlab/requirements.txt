@@ -1,0 +1,8 @@
+apt:
+    tmux
+    tmuxp
+    python3-pip
+    sshpass
+    git
+    docker
+    

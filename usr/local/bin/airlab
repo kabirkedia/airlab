@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# Function to print usage information for the airlab command
+function print_usage() {
+    echo "Usage: airlab <command> [options]"
+    echo "Commands:"
+    echo "  greet               Say hello"
+    echo "  launch <config_file> [--system=<robot_name>] Launch a robot configuration"
+    echo "  setup               Setup airlab command on a remote machine"
+    echo "  sync                Sync code on a remote machine"
+}
+
+# Check if a command is provided
+if [ -z "$1" ]; then
+    echo "Error: No command provided."
+    print_usage
+    exit 1
+fi
+
+# Get the command and shift to get additional arguments
+COMMAND="$1"
+shift
+
+# Handle different commands
+case "$COMMAND" in
+    greet)
+        # Call the airlab-greet script
+        echo "HELLO"
+        ;;
+    launch)
+        # Call the airlab-launch script with additional arguments
+        /usr/local/bin/robot-launch "$@"
+        ;;
+    setup)
+        # Call the airlab-setup script
+        /usr/local/bin/robot-setup "$@"
+        ;;
+    sync)
+        # Call the airlab-setup script
+        /usr/local/bin/robot-sync "$@"
+        ;;
+    *)
+        echo "Unknown command: $COMMAND"
+        print_usage
+        exit 1
+        ;;
+esac

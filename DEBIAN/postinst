@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# # Get the home directory for the user running the script
+USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+
+# Ensure the ~/.airlab directory exists
+mkdir -p "$USER_HOME/.airlab"
+
+# Copy the entire /etc/airlab directory to ~/.airlab
+# This will overwrite any existing files in ~/.airlab with files from /etc/airlab
+rsync -av --ignore-existing $USER_HOME/airlab.deb "$USER_HOME/.airlab/"
+

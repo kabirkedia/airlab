@@ -1,0 +1,311 @@
+#!/bin/bash
+
+# Exit on error, undefined variables, and pipe failures
+set -euo pipefail
+
+# Color codes for output
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly NC='\033[0m' # No Color
+
+# Logging functions
+log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
+
+# Function to print usage information
+print_usage() {
+    cat << EOF
+Usage: airlab sync <robot_name> [--dry-run] [--delete] [--path=<relative_path>] [--exclude=<pattern>]
+
+Arguments:
+    <robot_name>               Name of the robot to sync with (must be defined in robot.conf)
+
+Options:
+    --dry-run                  Show what would be synchronized without making changes
+    --delete                   Overwrite the current contents in the directory on the remote machine (same as --delete in rsync)
+    --path=<relative_path>     Sync only the contents of the given path. The path should be relative, starting from the ws_path provided during setup
+    --exclude=<pattern>        Exclude files or directories matching the pattern (same as rsync's --exclude)
+    --help                     Show this help message
+
+Examples:
+    airlab sync mt001                           # Sync files to mt001
+    airlab sync mt001 --dry-run                 # Show what would be synced to mt001
+    airlab sync mt001 --delete                  # Sync files and delete files not present locally
+    airlab sync mt001 --path=src/path           # Sync only the contents of src/path to mt001
+    airlab sync mt001 --exclude='*.log'         # Exclude all .log files from being synced
+    airlab sync mt001 --exclude='temp/'         # Exclude the 'temp' directory from being synced
+    airlab sync mt001 --exclude='*.log' --path=src/path # Sync only src/path excluding .log files
+EOF
+}
+
+
+
+# Function to check if required commands exist
+check_dependencies() {
+    local deps=("rsync" "ssh" "sshpass" "date")
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" >/dev/null 2>&1; then
+            log_error "Required dependency '$dep' is not installed."
+            exit 1
+        fi
+    done
+}
+
+sync_time() {
+    local ssh_address=$1
+    local password=$2
+    
+    log_info "Syncing system time..."
+    
+    # Get current local time in a format suitable for date command
+    local current_time
+    current_time=$(date "+%Y-%m-%d %H:%M:%S")
+    
+    # Try to set the time on the remote system
+    if ! sshpass -p "$password" ssh "$ssh_address" "sudo date -s \"$current_time\"" >/dev/null 2>&1; then
+        log_warn "Failed to sync time using date command, trying hwclock..."
+        
+        # If date command fails, try using hwclock
+        if ! sshpass -p "$password" ssh "$ssh_address" "echo $password | sudo -S hwclock --systohc" >/dev/null 2>&1; then
+            log_error "Failed to sync system time"
+            return 1
+        fi
+    fi
+    
+    # Verify the time sync
+    local local_time remote_time time_diff
+    local_time=$(date +%s)
+    remote_time=$(sshpass -p "$password" ssh "$ssh_address" "date +%s")
+    time_diff=$((local_time - remote_time))
+    time_diff=${time_diff#-} # Get absolute value
+    
+    if [ "$time_diff" -gt 2 ]; then
+        log_warn "Time difference after sync: ${time_diff} seconds"
+    else
+        log_info "Time synchronized successfully"
+    fi
+    
+    return 0
+}
+
+verify_path() {
+    local ssh_address=$1
+    local password=$2
+    local remote_ws=$3
+    local path=$4
+
+    if sshpass -p "$password" ssh "$ssh_address" "[ -e $remote_ws/$path ]"; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+parse_yaml() {
+    local yaml_file=$1
+    local key=$2
+    local result
+    
+    # Check if file exists
+    if [[ ! -f "$yaml_file" ]]; then
+        log_error "YAML file not found: $yaml_file"
+        return 1
+    fi
+    
+    # Check if python3 and PyYAML are available
+    if ! python3 -c "import yaml" 2>/dev/null; then
+        log_error "Python YAML module not found. Please install: pip3 install PyYAML"
+        return 1
+    fi
+    
+    result=$(python3 -c '
+import sys
+import yaml
+
+try:
+    with open("'"$yaml_file"'", "r") as f:
+        data = yaml.safe_load(f)
+        value = data
+        for key in "'"$key"'".split("."):
+            if not isinstance(value, dict):
+                print("")
+                sys.exit(1)
+            value = value.get(key, "")
+        print(value)
+except Exception as e:
+    print("")
+    sys.exit(1)
+')
+    
+    if [[ -z "$result" ]]; then
+        log_error "Failed to parse key '$key' from YAML file"
+        return 1
+    fi
+    
+    echo "$result"
+}
+
+main() {
+    # Check dependencies first
+    check_dependencies
+
+    # Parse command line arguments
+    if [[ $# -eq 0 || "$1" == "--help" ]]; then
+        print_usage
+        exit 0
+    fi
+
+    # Get the robot name
+    ROBOT_NAME="$1"
+    DRY_RUN=false
+    SYNC_TIME=false
+    SYNC_PATH=""
+    DELETE=false
+    EXCLUDE_PATTERNS=()
+    shift  # Remove the first argument (ROBOT_NAME)
+    
+    # Parse additional flags
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dry-run)
+                DRY_RUN=true
+                ;;
+            --time)
+                SYNC_TIME=true
+                ;;
+            --delete)
+                DELETE=true
+                ;;
+            --path=*)
+                SYNC_PATH="${1#--path=}"
+                ;;
+            --exclude=*)
+                EXCLUDE_PATTERNS+=("--exclude=${1#--exclude=}")
+                ;;
+            *)
+                log_error "Invalid option: $1"
+                print_usage
+                exit 1
+                ;;
+        esac
+        shift
+    done
+
+    # Check for robot configuration
+    ROBOT_CONF="$AIRLAB_PATH/robot/robot.conf"
+    if [[ ! -f "$ROBOT_CONF" ]]; then
+        log_error "Robot configuration file not found at '$ROBOT_CONF'"
+        exit 1
+    fi
+
+    # Load the robot's SSH address from robot.conf
+    ROBOT_SSH_ADDRESS=$(grep "^$ROBOT_NAME=" "$ROBOT_CONF" | cut -d= -f2)
+    if [[ -z "$ROBOT_SSH_ADDRESS" ]]; then
+        log_error "Robot '$ROBOT_NAME' not found in $ROBOT_CONF"
+        exit 1
+    fi
+
+    # Get robot workspace path from robot_info.yaml
+    ROBOT_INFO_PATH="$AIRLAB_PATH/robot/robot_info.yaml"
+    if [[ ! -f "$ROBOT_INFO_PATH" ]]; then
+        log_error "Robot info file not found at '$ROBOT_INFO_PATH'"
+        exit 1
+    fi
+
+    REMOTE_WS_PATH=$(parse_yaml "$ROBOT_INFO_PATH" "$ROBOT_NAME.ws_path") || {
+        log_error "Failed to get workspace path from robot_info.yaml"
+        exit 1
+    }
+
+    if [[ -z "$REMOTE_WS_PATH" ]]; then
+        log_error "Workspace path is empty in robot_info.yaml"
+        exit 1
+    fi
+
+    # Get password for SSH connection
+    local robot_password
+    log_info "Enter password for $ROBOT_SSH_ADDRESS:"
+    read -s robot_password
+    [[ -z "$robot_password" ]] && log_error "Password cannot be empty" && exit 1
+    echo
+
+    # Test SSH connection
+    if ! sshpass -p "$robot_password" ssh -q -o ConnectTimeout=15 "$ROBOT_SSH_ADDRESS" exit; then
+        log_error "Cannot connect to robot '$ROBOT_SSH_ADDRESS'"
+        exit 1
+    fi
+    log_info "SSH connection successful"
+
+    # Sync time if requested
+    if [[ "$SYNC_TIME" == true ]]; then
+        if ! sync_time "$ROBOT_SSH_ADDRESS" "$robot_password"; then
+            log_error "Time synchronization failed"
+            exit 1
+        fi
+    fi
+
+    # Define source and destination paths
+    LOCAL_WS_PATH="$AIRLAB_PATH"
+    
+    # Define rsync options
+    RSYNC_OPTS=(
+        -avz  # archive mode, verbose, compress
+        --exclude='.git'        # exclude version control
+        --exclude='build/'      # exclude build directories
+        --exclude='devel/'      # exclude devel directories
+        --exclude='log/'        # exclude log directories
+        --exclude='install/'    # exclude install directories
+        --exclude='*.pyc'       # exclude Python bytecode
+        --exclude='__pycache__' # exclude Python cache
+        --exclude='*.env'       # env is different for all
+    )
+
+    # Add dry-run flag if requested
+    if [[ "$DRY_RUN" == true ]]; then
+        RSYNC_OPTS+=("--dry-run")
+        log_info "Performing dry run - no files will be changed"
+    fi
+
+    # Add delete-run flag if requested
+    if [[ "$DELETE" == true ]]; then
+        RSYNC_OPTS+=("--delete")
+        log_info "Overwriting contents of the directory"
+    fi
+
+    # Add exclude patterns to rsync options
+    if [[ ${#EXCLUDE_PATTERNS[@]} -gt 0 ]]; then
+        RSYNC_OPTS+=("${EXCLUDE_PATTERNS[@]}")
+    fi
+
+    # Perform the sync
+    log_info "Syncing from $LOCAL_WS_PATH to $ROBOT_SSH_ADDRESS:$REMOTE_WS_PATH"
+
+    if [[ "$SYNC_PATH" != "" ]]; then
+        LOCAL_WS_PATH="$LOCAL_WS_PATH/$SYNC_PATH"
+        if ! verify_path "$ROBOT_SSH_ADDRESS" "$robot_password" "$REMOTE_WS_PATH" "$SYNC_PATH"; then
+            log_info "Remote path does not exist. Creating directory: $REMOTE_WS_PATH/$SYNC_PATH"
+            if ! sshpass -p "$robot_password" ssh "$ROBOT_SSH_ADDRESS" "mkdir -p $REMOTE_WS_PATH/$SYNC_PATH"; then
+                log_error "Failed to create remote directory: $REMOTE_WS_PATH/$SYNC_PATH"
+                exit 1
+            fi
+        fi
+        REMOTE_WS_PATH="$REMOTE_WS_PATH/$SYNC_PATH"
+    fi
+
+    
+    if ! sshpass -p "$robot_password" rsync "${RSYNC_OPTS[@]}" \
+        "$LOCAL_WS_PATH/" \
+        "$ROBOT_SSH_ADDRESS:$REMOTE_WS_PATH/"; then
+        log_error "Sync failed"
+        exit 1
+    fi
+
+    if [[ "$DRY_RUN" == false ]]; then
+        log_info "Sync completed successfully"
+    fi
+}
+
+# Run main function
+main "$@"

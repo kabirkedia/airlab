@@ -1,0 +1,6 @@
+session_name: sample_session
+windows:
+  - window_name: Main
+    panes:
+      - echo "This is a sample airlab tmux session."
+      - echo "You can customize this file."

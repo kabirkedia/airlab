@@ -1,0 +1,12 @@
+session_name: airlab_session
+windows:
+  - window_name: Main
+    panes:
+      - echo "Welcome to airlab tmux session"
+  - window_name: Main2
+    panes:
+      - echo "Welcome to airlab tmux session"
+  - window_name: Main3
+    panes:
+      - echo "Welcome to airlab tmux session"
+  

@@ -1,0 +1,9 @@
+Package: airlab
+Version: 1.0
+Section: utils
+Priority: optional
+Architecture: all
+Essential: no
+Maintainer: Kabir Kedia <kabirkedia0111@gmail.com>
+Description: Airlab custom Linux command
+ A custom command package for Linux to handle various tasks.
