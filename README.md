@@ -71,9 +71,6 @@ To use `airlab`, you need to set up configuration files for the robots you want 
 
 Make sure to set the `AIRLAB_PATH` environment variable to the root directory of your airlab setup:
 
-```bash
-export AIRLAB_PATH=/path/to/your/airlab/setup
-```
 
 ## Usage
 
@@ -125,6 +122,8 @@ airlab setup <command> [options]
 - `--path=<path>`: Specify a custom installation path (default is `$DEFAULT_AIRLAB_PATH`).
 - `--force`: Force overwrites without prompting (use cautiously).
 - `--help`: Display usage information for the `setup` command.
+
+Make sure to source ~/.bashrc if you are on the local computer
 
 ## Examples
 
