@@ -252,8 +252,8 @@ setup_remote() {
     [[ -z "$robot_password" ]] && error_exit "Password cannot be empty"
     echo
 
-    if ! sshpass -p "$robot_password" ssh -q -o ConnectTimeout=15 "$ROBOT_SSH_ADDRESS" exit; then
-        log_error "Cannot connect to remote system '$ROBOT_SSH_ADDRESS'"
+    if ! sshpass -p "$robot_password" ssh -q -o ConnectTimeout=15 "$robot_ssh_address" exit; then
+        log_error "Cannot connect to remote system '$robot_ssh_address'"
         exit 1
     fi
     # Check existing installation

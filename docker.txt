@@ -1,0 +1,6 @@
+1. Install docker
+2. Install nvidia container toolkit(https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+3. docker pull 12.2.2-devel-ubuntu22.04
+4. docker run -it --gpus all --name cuda_container b56b435576e8
+5. sudo apt install python3
+5. pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121

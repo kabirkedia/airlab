@@ -5,4 +5,11 @@ apt:
     sshpass
     git
     docker
+    ssh
+    rsync
+    date
+    docker
+    nvidia-container-toolkit
+pip:
+    pyyaml
     
