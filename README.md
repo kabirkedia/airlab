@@ -89,7 +89,7 @@ airlab setup <command> [options]
 
 #### Options
 
-- `--path=<path>`: Specify a custom installation path (default is `$DEFAULT_AIRLAB_PATH`).
+- `--path=<path>`: Specify a custom installation path (default is `$HOME/.airlab`).
 - `--force`: Force overwrites without prompting (use cautiously).
 - `--help`: Display usage information for the `setup` command.
 
