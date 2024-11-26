@@ -245,4 +245,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-This version covers the new `launch` and `setup` commands, along with details on how to build and use the Debian package. Let me know if there are any adjustments or additional details you'd like to include!
