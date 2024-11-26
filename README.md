@@ -1,7 +1,3 @@
-Here's an updated `README.md` for the `airlab` command, incorporating the new `launch` and `setup` functionalities as well as the fact that it's a Debian package:
-
----
-
 # Airlab
 
 `airlab` is a command-line tool designed to streamline interactions between a local environment and remote robotic systems. It supports file synchronization, launch file management, and setup for both local and remote environments. `airlab` can also be installed as a Debian package, allowing easy deployment and updates.
