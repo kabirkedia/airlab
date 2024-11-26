@@ -4,3 +4,6 @@
 4. docker run -it --gpus all --name cuda_container b56b435576e8
 5. sudo apt install python3
 5. pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+docker run -d --gpus all --name cuda_container -v /home/dtc/foo_bar:/home/dtc_devel/foo_bar --restart=always b56b435576e8
+
