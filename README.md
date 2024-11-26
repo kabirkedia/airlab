@@ -127,6 +127,21 @@ airlab launch <robot_name> [options]
 
 ## Examples
 
+
+### Setup Examples
+
+Set up the local environment with a custom path:
+
+```bash
+airlab setup local --path=/custom/path
+```
+
+Set up the environment for `robot1` with a custom path, forcing overwrites:
+
+```bash
+airlab setup robot1 --path=/custom/path --force
+```
+
 ### Sync Examples
 
 Sync all files to the robot `mt001`:
@@ -177,20 +192,6 @@ Launch `mt001.yaml` on the remote system `mt002`:
 
 ```bash
 airlab launch mt001 --system=mt002
-```
-
-### Setup Examples
-
-Set up the local environment with a custom path:
-
-```bash
-airlab setup local --path=/custom/path
-```
-
-Set up the environment for `robot1` with a custom path, forcing overwrites:
-
-```bash
-airlab setup robot1 --path=/custom/path --force
 ```
 
 ## Dependencies
