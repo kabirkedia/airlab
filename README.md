@@ -74,6 +74,27 @@ Make sure to set the `AIRLAB_PATH` environment variable to the root directory of
 
 ## Usage
 
+### Setup Command
+
+The `setup` command initializes the local or remote environment for `airlab`. You can specify custom paths and force overwrites.
+
+```bash
+airlab setup <command> [options]
+```
+
+#### Commands
+
+- `local`: Set up the local environment.
+- `<robot_name>`: Set up a remote robot environment.
+
+#### Options
+
+- `--path=<path>`: Specify a custom installation path (default is `$DEFAULT_AIRLAB_PATH`).
+- `--force`: Force overwrites without prompting (use cautiously).
+- `--help`: Display usage information for the `setup` command.
+
+Make sure to source ~/.bashrc if you are on the local computer
+
 ### Sync Command
 
 The `sync` command is used to synchronize files between the local environment and the robot's remote workspace.
@@ -103,27 +124,6 @@ airlab launch <robot_name> [options]
 - `--system=<target_system>`: Launch or stop a session on a remote system specified in `robot.conf`.
 - `--stop`: Stop the tmux session instead of starting it.
 - `--help`: Display usage information for the `launch` command.
-
-### Setup Command
-
-The `setup` command initializes the local or remote environment for `airlab`. You can specify custom paths and force overwrites.
-
-```bash
-airlab setup <command> [options]
-```
-
-#### Commands
-
-- `local`: Set up the local environment.
-- `<robot_name>`: Set up a remote robot environment.
-
-#### Options
-
-- `--path=<path>`: Specify a custom installation path (default is `$DEFAULT_AIRLAB_PATH`).
-- `--force`: Force overwrites without prompting (use cautiously).
-- `--help`: Display usage information for the `setup` command.
-
-Make sure to source ~/.bashrc if you are on the local computer
 
 ## Examples
 
