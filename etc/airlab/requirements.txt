@@ -3,8 +3,10 @@ apt:
     tmuxp
     python3-pip
     sshpass
+    ssh-askpass
     git
     docker
+    docker-compose-plugin
     ssh
     rsync
     date

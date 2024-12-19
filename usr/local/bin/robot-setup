@@ -273,7 +273,6 @@ setup_remote() {
 
     # Setup remote environment
     log_info "Setting up remote environment..."
-    
     # Create directory structure
     remote_exec "$robot_ssh_address" "mkdir -p $airlab_path" "$robot_password"
 
@@ -283,10 +282,10 @@ setup_remote() {
         "$remote_path/" "$robot_ssh_address:$airlab_path/" || error_exit "Failed to copy files"
 
     # Install package if needed
-    if ! remote_exec "$robot_ssh_address" "dpkg -l | grep -q '^ii.*airlab'" "$robot_password"; then
+    if !sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "dpkg -l | grep -q '^ii.*airlab'" ; then
         log_info "Installing airlab package..."
         remote_copy "$HOME/.airlab/airlab.deb" "$robot_ssh_address:/tmp/airlab.deb" "$robot_password"
-        remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg -i /tmp/airlab.deb" "$robot_password"
+        remote_exec "$robot_ssh_address" "bash -c 'echo \"$robot_password\" | sudo -S -p \"\" dpkg -i /tmp/airlab.deb'" "$robot_password"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S apt-get install -f -y" "$robot_password"
         remote_exec "$robot_ssh_address" "rm -f /tmp/airlab.deb" "$robot_password"
     fi

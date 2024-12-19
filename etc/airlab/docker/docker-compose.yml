@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: sample.dockerfile
+    container_name: app_container
+    volumes:
+      - $AIRLAB_PATH:$AIRLAB_PATH
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    ports:
+      - "5000:5000"

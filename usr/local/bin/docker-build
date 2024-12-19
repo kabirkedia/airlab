@@ -1,0 +1,210 @@
+#!/bin/bash
+
+# Exit on error, undefined variables, and pipe failures
+set -euo pipefail
+
+# Color codes for output
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly NC='\033[0m' # No Color
+
+# Logging functions
+log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
+
+show_usage() {
+    echo -e "${YELLOW}Usage:${NC}"
+    echo "  airlab docker-build [--system=<system_name>] [--compose=<compose_file>]"
+    echo
+    echo -e "${YELLOW}Options:${NC}"
+    echo "  --system=<system_name>    Specify the system name for remote operations."
+    echo "  --compose=<compose_file>  Specify a Docker Compose file (default: docker-compose.yml)."
+    echo "  --help                    Display this help message."
+    echo
+    echo -e "${YELLOW}Examples:${NC}"
+    echo "  airlab docker-build"
+    echo "  airlab docker-build --compose=docker-compose-orin.yml"
+    echo "  airlab docker-build --system=robot1 --compose=docker-compose-orin.yml"
+}
+
+# Function to get SSH address from robot.conf based on system name
+get_ssh_address() {
+    local system_name="$1"
+    
+    if [[ ! -f "$ROBOT_CONF" ]]; then
+        log_error "Robot configuration file not found at '$ROBOT_CONF'"
+        exit 1
+    fi
+
+    local ssh_address
+    ssh_address=$(grep "^$system_name=" "$ROBOT_CONF" | cut -d= -f2)
+
+    if [[ -z "$ssh_address" ]]; then
+        log_error "System '$system_name' not found in $ROBOT_CONF"
+        exit 1
+    fi
+
+    echo "$ssh_address"
+}
+
+parse_yaml() {
+    local yaml_file=$1
+    local key=$2
+    local result
+    
+    # Check if file exists
+    if [[ ! -f "$yaml_file" ]]; then
+        log_error "YAML file not found: $yaml_file"
+        return 1
+    fi
+    
+    # Check if python3 and PyYAML are available
+    if ! python3 -c "import yaml" 2>/dev/null; then
+        log_error "Python YAML module not found. Please install: pip3 install PyYAML"
+        return 1
+    fi
+    
+    result=$(python3 -c '
+import sys
+import yaml
+
+try:
+    with open("'"$yaml_file"'", "r") as f:
+        data = yaml.safe_load(f)
+        value = data
+        for key in "'"$key"'".split("."):
+            if not isinstance(value, dict):
+                print("")
+                sys.exit(1)
+            value = value.get(key, "")
+        print(value)
+except Exception as e:
+    print("")
+    sys.exit(1)
+')
+    
+    if [[ -z "$result" ]]; then
+        log_error "Failed to parse key '$key' from YAML file"
+        return 1
+    fi
+    
+    echo "$result"
+}
+
+
+# Function to check if required commands exist
+check_dependencies() {
+    local deps=("docker" "docker-compose" "ssh" "sshpass")
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" >/dev/null 2>&1; then
+            log_error "Required dependency '$dep' is not installed."
+            exit 1
+        fi
+    done
+}
+
+# Main function
+main() {
+    # Check dependencies first
+    check_dependencies
+
+    local SYSTEM_NAME=""
+    local COMPOSE_NAME="docker-compose.yml"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --system=*)
+                SYSTEM_NAME="${1#--system=}"
+                ;;
+            --compose=*)
+                COMPOSE_FILE="${1#--compose=}"
+                ;;
+            
+            --help)
+                show_usage
+                exit 0
+                ;;
+            *)
+                log_error "Invalid option: $1"
+                show_usage
+                exit 1
+                ;;
+        esac
+        shift
+    done
+
+    COMPOSE_FILE="$AIRLAB_PATH/docker/$COMPOSE_NAME"
+
+    if [[ -n "$SYSTEM_NAME" ]]; then
+
+        ROBOT_CONF="$AIRLAB_PATH/robot/robot.conf"
+        if [[ ! -f "$ROBOT_CONF" ]]; then
+            log_error "Robot configuration file not found at '$ROBOT_CONF'"
+            exit 1
+        fi
+
+        # Load the target system's SSH address from robot.conf
+        ROBOT_SSH_ADDRESS=$(grep "^$SYSTEM_NAME=" "$ROBOT_CONF" | cut -d= -f2)
+        if [[ -z "$ROBOT_SSH_ADDRESS" ]]; then
+            log_error "System '$SYSTEM_NAME' not found in $ROBOT_CONF"
+            exit 1
+        fi
+
+        local robot_password
+        log_info "Enter password for $ROBOT_SSH_ADDRESS:"
+        read -s robot_password
+        [[ -z "$robot_password" ]] && error_exit "Password cannot be empty"
+        echo
+
+        # Check SSH connection before attempting any operation
+        if ! sshpass -p "$robot_password" ssh -q -o ConnectTimeout=15 "$ROBOT_SSH_ADDRESS" exit; then
+            log_error "Cannot connect to remote system '$ROBOT_SSH_ADDRESS'"
+            exit 1
+        fi
+        log_info "SSH connection successful"
+
+        ROBOT_INFO_PATH="$AIRLAB_PATH/robot/robot_info.yaml"
+        if [[ ! -f "$ROBOT_INFO_PATH" ]]; then
+            log_error "Robot info file not found at '$ROBOT_INFO_PATH'"
+            exit 1
+        fi
+        # Parse the workspace path and handle errors
+        LAUNCH_DIR=$(parse_yaml "$ROBOT_INFO_PATH" "$SYSTEM_NAME.ws_path") || {
+            log_error "Failed to get workspace path from robot_info.yaml"
+            exit 1
+        }
+        
+        if [[ -z "$LAUNCH_DIR" ]]; then
+            log_error "Workspace path is empty in robot_info.yaml"
+            exit 1
+        fi
+        
+        log_info "Building Docker file at $LAUNCH_DIR/docker/$COMPOSE_NAME"
+
+        sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "source ~/.bashrc"
+        # Launch on remote system with error handling
+        if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "docker compose -f "$LAUNCH_DIR/docker/$COMPOSE_NAME" build"; then
+            log_error "Failed to build image on remote system"
+            exit 1
+        fi
+    else
+        # Local operations
+
+        # Check if the YAML file exists locally before launching
+        if [[ ! -f "$COMPOSE_FILE" ]]; then
+            log_error "COMPOSE file '$COMPOSE_FILE' not found."
+            exit 1
+        fi
+
+        log_info "Building Docker file at $COMPOSE_FILE"
+
+        # Launch on local system with error handling
+        if ! docker compose -f "$COMPOSE_FILE" build; then
+            log_error "Failed to build on local system"
+            exit 1
+        fi
+    fi
+}
+
+# Run main function
+main "$@"

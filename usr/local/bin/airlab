@@ -8,6 +8,8 @@ function print_usage() {
     echo "  launch <config_file> [--system=<robot_name>] Launch a robot configuration"
     echo "  setup               Setup airlab command on a remote machine"
     echo "  sync                Sync code on a remote machine"
+    echo "  docker-build        Build Docker images(using docker compose)"
+    echo "  docker-up           Start Docker containers(using docker compose)"
 }
 
 # Check if a command is provided
@@ -38,6 +40,14 @@ case "$COMMAND" in
     sync)
         # Call the airlab-setup script
         /usr/local/bin/robot-sync "$@"
+        ;;
+    docker-build)
+        # Setup Dockerfiles in the right place
+        /usr/local/bin/docker-build "$@"
+        ;;
+    docker-up)
+        # Setup Dockerfiles in the right place
+        /usr/local/bin/docker-up "$@"
         ;;
     *)
         echo "Unknown command: $COMMAND"
