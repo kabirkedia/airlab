@@ -121,7 +121,7 @@ main() {
                 SYSTEM_NAME="${1#--system=}"
                 ;;
             --compose=*)
-                COMPOSE_FILE="${1#--compose=}"
+                COMPOSE_NAME="${1#--compose=}"
                 ;;
             
             --help)
@@ -185,20 +185,20 @@ main() {
         
         log_info "Starting Docker Compose File at $LAUNCH_DIR/docker/$COMPOSE_NAME"
 
-        if ! context_exists "$SYSTEM_NAME"; then
-            log_info "Creating Docker context: $SYSTEM_NAME at $ROBOT_SSH_ADDRESS"
-            docker context create "$SYSTEM_NAME" --docker "host=ssh://$ROBOT_SSH_ADDRESS"
-        else
-            log_info "Docker context $SYSTEM_NAME already exists"
-        fi
+        # if ! context_exists "$SYSTEM_NAME"; then
+        #     log_info "Creating Docker context: $SYSTEM_NAME at $ROBOT_SSH_ADDRESS"
+        #     docker context create "$SYSTEM_NAME" --docker "host=ssh://$ROBOT_SSH_ADDRESS"
+        # else
+        #     log_info "Docker context $SYSTEM_NAME already exists"
+        # fi
 
-        sshpass -p "$robot_password" docker --context $SYSTEM_NAME compose -f "$AIRLAB_PATH/docker/$COMPOSE_NAME" up -d
+        # sshpass -p "$robot_password" docker --context $SYSTEM_NAME compose -f "$AIRLAB_PATH/docker/$COMPOSE_NAME" up -d
 
         # Launch on remote system with error handling
-        # if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "source ~/.bashrc && docker compose -f "$LAUNCH_DIR/docker/$COMPOSE_NAME" up"; then
-        #     log_error "Failed to build image on remote system"
-        #     exit 1
-        # fi
+        if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "source ~/.bashrc && docker compose -f "$LAUNCH_DIR/docker/$COMPOSE_NAME" up"; then
+            log_error "Failed to build image on remote system"
+            exit 1
+        fi
     else
         # Local operations
 

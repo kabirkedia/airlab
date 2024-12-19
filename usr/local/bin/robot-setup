@@ -142,6 +142,7 @@ setup_local() {
     fi
 
     # Setup environment
+    sed -i '/source .*airlab.env/d' ~/.bashrc
     setup_bashrc "$airlab_path"
         cat > $airlab_path/airlab.env << EOF
 AIRLAB_PATH=$airlab_path
@@ -300,8 +301,10 @@ EOF
     rm -f /tmp/airlab.env
 
     # Update remote .bashrc
+    remote_exec "$robot_ssh_address" "sed -i '/source .*airlab.env/d' ~/.bashrc" "$robot_password"
     remote_exec "$robot_ssh_address" "grep -q 'source $airlab_path/airlab.env' ~/.bashrc || \
         echo 'set -o allexport; source $airlab_path/airlab.env; set +o allexport' >> ~/.bashrc" "$robot_password"
+    
 
     log_info "✅ Remote setup completed successfully!"
     cat << EOF
