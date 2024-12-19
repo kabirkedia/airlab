@@ -58,7 +58,7 @@ To use `airlab`, you need to set up configuration files for the robots you want 
    mt002=user@192.168.1.11
    ```
 
-2. **robot_info.yaml**: Contains additional robot information, like workspace paths. It should be located at `$AIRLAB_PATH/robot/robot_info.yaml`. It is automatically geenrated when you run the setup command on a new robot:
+2. **robot_info.yaml**: Contains additional robot information, like workspace paths. It should be located at `$AIRLAB_PATH/robot/robot_info.yaml`. It is automatically generated when you run the setup command on a new robot:
 
    ```yaml
    mt001:
