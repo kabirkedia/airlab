@@ -42,13 +42,17 @@ case "$COMMAND" in
         /usr/local/bin/robot-sync "$@"
         ;;
     docker-build)
-        # Setup Dockerfiles in the right place
+        # Build Dockerfiles in the right place
         /usr/local/bin/docker-build "$@"
         ;;
     docker-up)
-        # Setup Dockerfiles in the right place
+        # Start Dockerfiles in the right place
         /usr/local/bin/docker-up "$@"
         ;;
+    docker-join)
+        # Join Dockerfiles in the right place
+        /usr/local/bin/docker-join "$@"
+        ;; 
     *)
         echo "Unknown command: $COMMAND"
         print_usage
