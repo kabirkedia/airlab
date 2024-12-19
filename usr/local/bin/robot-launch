@@ -15,25 +15,25 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 
 # Function to print usage information
-print_usage() {
-    cat << EOF
-Usage: airlab launch <robot_name> [--system=<target_system>] [--stop]
-
-Arguments:
-    <robot_name>               Name of the robot/launch file (without .yaml extension)
-
-Options:
-    --system=<target_system>   Launch on a remote system defined in robot.conf
-    --stop                     Stop the tmux session instead of starting it
-    --help                     Show this help message
-
-Example:
-    airlab launch mt001                      # Launch mt001.yaml locally
-    airlab launch mt001 --stop               # Stop local mt001 tmux session
-    airlab launch mt001 --system=mt002       # Launch mt001.yaml on mt002
-    airlab launch mt001 --system=mt002 --stop # Stop mt001 tmux session on mt002
-EOF
+show_usage() {
+    echo -e "${YELLOW}Usage:${NC}"
+    echo "  airlab launch <robot_name> [options]"
+    echo
+    echo -e "${YELLOW}Arguments:${NC}"
+    echo "  <robot_name>              Name of the robot/launch file (without .yaml extension)"
+    echo
+    echo -e "${YELLOW}Options:${NC}"
+    echo "  --system=<target_system>  Launch on a remote system defined in robot.conf"
+    echo "  --stop                    Stop the tmux session instead of starting it"
+    echo "  --help                    Show this help message"
+    echo
+    echo -e "${YELLOW}Examples:${NC}"
+    echo "  airlab launch mt001                       # Launch mt001.yaml locally"
+    echo "  airlab launch mt001 --stop               # Stop local mt001 tmux session"
+    echo "  airlab launch mt001 --system=mt002       # Launch mt001.yaml on mt002"
+    echo "  airlab launch mt001 --system=mt002 --stop # Stop mt001 tmux session on mt002"
 }
+
 
 parse_yaml() {
     local yaml_file=$1
@@ -106,7 +106,7 @@ main() {
 
     # Parse command line arguments
     if [[ $# -eq 0 || "$1" == "--help" ]]; then
-        print_usage
+        show_usage
         exit 0
     fi
 
@@ -129,7 +129,7 @@ main() {
                 ;;
             *)
                 log_error "Invalid option: $1"
-                print_usage
+                show_usage
                 exit 1
                 ;;
         esac

@@ -1,12 +1,22 @@
 #!/bin/bash
 
-# # Get the home directory for the user running the script
+# Get the home directory for the user running the script
 USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
 
 # Ensure the ~/.airlab directory exists
 mkdir -p "$USER_HOME/.airlab"
 
-# Copy the entire /etc/airlab directory to ~/.airlab
-# This will overwrite any existing files in ~/.airlab with files from /etc/airlab
-rsync -av --ignore-existing $USER_HOME/airlab.deb "$USER_HOME/.airlab/"
+# Find airlab.deb on the system (starting from root) and store the first result
+AIRLAB_DEB_PATH=$(find /home /tmp -type f -name "airlab.deb" 2>/dev/null | head -n 1)
+echo $AIRLAB_DEB_PATH
 
+# Check if the file was found
+if [[ -n "$AIRLAB_DEB_PATH" ]]; then
+    echo "Found airlab.deb at: $AIRLAB_DEB_PATH"
+    # Copy the file to ~/.airlab without overwriting existing files
+    rsync -av --ignore-existing "$AIRLAB_DEB_PATH" "$USER_HOME/.airlab/"
+    echo "airlab.deb has been successfully copied to ~/.airlab."
+else
+    echo "Error: airlab.deb not found on the system. Aborting."
+    exit 1
+fi

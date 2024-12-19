@@ -185,15 +185,6 @@ main() {
         
         log_info "Starting Docker Compose File at $LAUNCH_DIR/docker/$COMPOSE_NAME"
 
-        # if ! context_exists "$SYSTEM_NAME"; then
-        #     log_info "Creating Docker context: $SYSTEM_NAME at $ROBOT_SSH_ADDRESS"
-        #     docker context create "$SYSTEM_NAME" --docker "host=ssh://$ROBOT_SSH_ADDRESS"
-        # else
-        #     log_info "Docker context $SYSTEM_NAME already exists"
-        # fi
-
-        # sshpass -p "$robot_password" docker --context $SYSTEM_NAME compose -f "$AIRLAB_PATH/docker/$COMPOSE_NAME" up -d
-
         # Launch on remote system with error handling
         if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "source ~/.bashrc && docker compose -f "$LAUNCH_DIR/docker/$COMPOSE_NAME" up"; then
             log_error "Failed to build image on remote system"
@@ -202,7 +193,7 @@ main() {
     else
         # Local operations
 
-        # Check if the YAML file exists locally before launching
+        # Check if the COMPOSE file exists locally before launching
         if [[ ! -f "$COMPOSE_FILE" ]]; then
             log_error "COMPOSE file '$COMPOSE_FILE' not found."
             exit 1
@@ -210,7 +201,7 @@ main() {
 
         log_info "Starting Docker Compose File at $COMPOSE_FILE"
 
-        # Launch on local system with error handling
+        # Launch Compose file on local system with error handling
         if ! docker compose -f "$COMPOSE_FILE" up; then
             log_error "Failed to build on local system"
             exit 1

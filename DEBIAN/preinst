@@ -1,1 +1,60 @@
-echo "LESSSGO AIRLAB!!!"
+#!/bin/bash
+
+# Ensure the script is run with root privileges
+if [[ "$EUID" -ne 0 ]]; then
+    echo "This script must be run as root. Please use sudo."
+    exit 1
+fi
+
+echo "Updating package lists..."
+apt-get update
+
+# List of APT packages to install
+APT_PACKAGES=(
+    tmux
+    tmuxp
+    python3-pip
+    sshpass
+    ssh-askpass
+    git
+    docker
+    docker-compose-plugin
+    ssh
+    rsync
+    date
+    docker
+    nvidia-container-toolkit
+)
+
+echo "Installing APT packages..."
+for pkg in "${APT_PACKAGES[@]}"; do
+    if ! dpkg -l | grep -q "^ii\s*$pkg"; then
+        echo "Installing $pkg..."
+        apt-get install -y "$pkg"
+    else
+        echo "$pkg is already installed."
+    fi
+done
+
+# Ensure pip3 is available
+if ! command -v pip3 &>/dev/null; then
+    echo "pip3 is not installed. Aborting."
+    exit 1
+fi
+
+# List of PIP packages to install
+PIP_PACKAGES=(
+    pyyaml
+)
+
+echo "Installing PIP packages..."
+for pkg in "${PIP_PACKAGES[@]}"; do
+    if ! pip3 show "$pkg" &>/dev/null; then
+        echo "Installing $pkg..."
+        pip3 install "$pkg"
+    else
+        echo "$pkg is already installed."
+    fi
+done
+
+echo "All dependencies have been installed successfully."

@@ -15,30 +15,30 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 
 # Function to print usage information
-print_usage() {
-    cat << EOF
-Usage: airlab sync <robot_name> [--dry-run] [--delete] [--path=<relative_path>] [--exclude=<pattern>]
-
-Arguments:
-    <robot_name>               Name of the robot to sync with (must be defined in robot.conf)
-
-Options:
-    --dry-run                  Show what would be synchronized without making changes
-    --delete                   Overwrite the current contents in the directory on the remote machine (same as --delete in rsync)
-    --path=<relative_path>     Sync only the contents of the given path. The path should be relative, starting from the ws_path provided during setup
-    --exclude=<pattern>        Exclude files or directories matching the pattern (same as rsync's --exclude)
-    --help                     Show this help message
-
-Examples:
-    airlab sync mt001                           # Sync files to mt001
-    airlab sync mt001 --dry-run                 # Show what would be synced to mt001
-    airlab sync mt001 --delete                  # Sync files and delete files not present locally
-    airlab sync mt001 --path=src/path           # Sync only the contents of src/path to mt001
-    airlab sync mt001 --exclude='*.log'         # Exclude all .log files from being synced
-    airlab sync mt001 --exclude='temp/'         # Exclude the 'temp' directory from being synced
-    airlab sync mt001 --exclude='*.log' --path=src/path # Sync only src/path excluding .log files
-EOF
+show_usage() {
+    echo -e "${YELLOW}Usage:${NC}"
+    echo "  airlab sync <robot_name> [options]"
+    echo
+    echo -e "${YELLOW}Arguments:${NC}"
+    echo "  <robot_name>              Name of the robot to sync with (must be defined in robot.conf)"
+    echo
+    echo -e "${YELLOW}Options:${NC}"
+    echo "  --dry-run                 Show what would be synchronized without making changes"
+    echo "  --delete                  Overwrite the current contents in the directory on the remote machine (same as --delete in rsync)"
+    echo "  --path=<relative_path>    Sync only the contents of the given path. The path should be relative, starting from the ws_path provided during setup"
+    echo "  --exclude=<pattern>       Exclude files or directories matching the pattern (same as rsync's --exclude)"
+    echo "  --help                    Show this help message"
+    echo
+    echo -e "${YELLOW}Examples:${NC}"
+    echo "  airlab sync mt001                          # Sync files to mt001"
+    echo "  airlab sync mt001 --dry-run                # Show what would be synced to mt001"
+    echo "  airlab sync mt001 --delete                 # Sync files and delete files not present locally"
+    echo "  airlab sync mt001 --path=src/path          # Sync only the contents of src/path to mt001"
+    echo "  airlab sync mt001 --exclude='*.log'        # Exclude all .log files from being synced"
+    echo "  airlab sync mt001 --exclude='temp/'        # Exclude the 'temp' directory from being synced"
+    echo "  airlab sync mt001 --exclude='*.log' --path=src/path  # Sync only src/path excluding .log files"
 }
+
 
 
 
@@ -153,7 +153,7 @@ main() {
 
     # Parse command line arguments
     if [[ $# -eq 0 || "$1" == "--help" ]]; then
-        print_usage
+        show_usage
         exit 0
     fi
 
@@ -186,7 +186,7 @@ main() {
                 ;;
             *)
                 log_error "Invalid option: $1"
-                print_usage
+                show_usage
                 exit 1
                 ;;
         esac

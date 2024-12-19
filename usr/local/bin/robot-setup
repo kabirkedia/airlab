@@ -16,23 +16,23 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 
 # Function to display usage
-usage() {
-    cat << EOF
-Usage: $(basename "$0") setup <command> [options]
-
-Commands:
-    local               Setup local environment
-    <robot_name>        Setup remote robot environment
-
-Options:
-    --path=<path>      Custom installation path (default: $DEFAULT_AIRLAB_PATH)
-    --force            Force overwrite without prompting (use with caution)
-
-Examples:
-    $(basename "$0") setup local --path=/custom/path
-    $(basename "$0") setup robot1 --path=/custom/path --force
-EOF
+show_usage() {
+    echo -e "${YELLOW}Usage:${NC}"
+    echo "  $(basename "$0") setup Command [options]"
+    echo
+    echo -e "${YELLOW}Commands:${NC}"
+    echo "  local                   Setup local environment"
+    echo "  <system_name>           Setup remote robot environment"
+    echo
+    echo -e "${YELLOW}Options:${NC}"
+    echo "  --path=<path>           Custom installation path (default: $DEFAULT_AIRLAB_PATH)"
+    echo "  --force                 Force overwrite without prompting (use with caution)"
+    echo
+    echo -e "${YELLOW}Examples:${NC}"
+    echo "  $(basename "$0") setup local --path=/custom/path"
+    echo "  $(basename "$0") setup robot1 --path=~/custom/path --force"
 }
+
 
 # Function to handle errors
 error_exit() {
@@ -56,6 +56,7 @@ parse_args() {
                 ;;
             *)
                 if [[ "$arg" != "local" && "$arg" != -* ]]; then
+                    show_usage
                     error_exit "Invalid argument: $arg"
                 fi
                 ;;
@@ -107,6 +108,9 @@ cleanup_local() {
 setup_local() {
     local airlab_path="$1"
     local force="$2"
+
+    home_dir=$(echo $HOME | sed 's/^HOME=//')
+    airlab_path=$(echo "$airlab_path" | sed "s|^~|$home_dir|")
     
     log_info "Setting up local environment at $airlab_path"
 
@@ -259,7 +263,10 @@ setup_remote() {
     fi
     # Check existing installation
     log_info "Checking existing installation..."
-    echo $airlab_path
+    remote_home_dir=$(sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "echo \$HOME" | sed 's/^HOME=//')
+    airlab_path=$(echo "$airlab_path" | sed "s|^~|$remote_home_dir|")
+
+    log_info $airlab_path
     if sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "[ -d '$airlab_path' ]"; then
         log_warn "Directory exists."
         if [ "$force" = true ]; then
@@ -283,7 +290,7 @@ setup_remote() {
         "$remote_path/" "$robot_ssh_address:$airlab_path/" || error_exit "Failed to copy files"
 
     # Install package if needed
-    if !sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "dpkg -l | grep -q '^ii.*airlab'" ; then
+    if ! sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "dpkg -l | grep -q '^ii.*airlab'" ; then
         log_info "Installing airlab package..."
         remote_copy "$HOME/.airlab/airlab.deb" "$robot_ssh_address:/tmp/airlab.deb" "$robot_password"
         remote_exec "$robot_ssh_address" "bash -c 'echo \"$robot_password\" | sudo -S -p \"\" dpkg -i /tmp/airlab.deb'" "$robot_password"
@@ -320,7 +327,7 @@ update_robot_info "$remote_path" "$robot_name" "ws_path" "$airlab_path"
 }
 
 main() {
-    [[ $# -lt 1 ]] && { usage; error_exit "No command provided"; }
+    [[ $# -lt 1 ]] && { show_usage; error_exit "No command provided"; }
 
     local command="$1"
     local remote_path="$AIRLAB_PATH"
@@ -333,7 +340,7 @@ main() {
             setup_local "$AIRLAB_PATH" "$FORCE"
             ;;
         -h|--help)
-            usage
+            show_usage
             ;;
         *)
             setup_remote "$command" "$AIRLAB_PATH" "$remote_path" "$FORCE"

@@ -23,17 +23,31 @@ To install `airlab`, you can either build the Debian package (see [Building the 
 
 Clone the repository and place the `airlab` script in a directory that's included in your system's `PATH`:
 
+Ensure you have `dpkg-deb` installed:
+
+   ```bash
+   sudo apt-get install dpkg-dev
+   ```
+Now you can proceed to installation using the following commands. The chmod command might be confusing. You may using something else but the goal should be that all files inside the airlab directory should be executable.
+
 ```bash
 git clone <repository-url>
 cd airlab
-chmod +x airlab
+chmod -R a+rX *           # To set all files as executable
 cd ..
 dpkg-deb --build airlab
+sudo dpkg -i airlab.deb
 ```
 
 ### Installing from Debian Package
 
-Once the package is built, install it using `dpkg`:
+Once the package is built, install it using `dpkg`. You can also install the .deb package directly: To create the Debian package:
+
+Ensure you have `dpkg-deb` installed:
+
+   ```bash
+   sudo apt-get install dpkg-dev
+   ```
 
 ```bash
 sudo dpkg -i airlab_<version>.deb
@@ -70,166 +84,170 @@ Make sure to set the `AIRLAB_PATH` environment variable to the root directory of
 
 ## Usage
 
-### Setup Command
+Once installed, you can use the `airlab` command to perform various tasks. Below are the usage details for each command.
 
-The `setup` command initializes the local or remote environment for `airlab`. You can specify custom paths and force overwrites.
+### launch
+
+Launch a robot configuration or stop a tmux session. You can launch configurations locally or on a remote system.
 
 ```bash
-airlab setup <command> [options]
+Usage:
+  airlab launch <robot_name> [options]
+
+Arguments:
+  <robot_name>              Name of the robot/launch file (without .yaml extension)
+
+Options:
+  --system=<target_system>  Launch on a remote system defined in robot.conf
+  --stop                    Stop the tmux session instead of starting it
+  --help                    Show this help message
+
+Examples:
+  airlab launch mt001                       # Launch mt001.yaml locally
+  airlab launch mt001 --stop               # Stop local mt001 tmux session
+  airlab launch mt001 --system=mt002       # Launch mt001.yaml on mt002
+  airlab launch mt001 --system=mt002 --stop # Stop mt001 tmux session on mt002
 ```
 
-#### Commands
+### setup
 
-- `local`: Set up the local environment.
-- `<robot_name>`: Set up a remote robot environment.
-
-#### Options
-
-- `--path=<path>`: Specify a custom installation path (default is `$HOME/.airlab`).
-- `--force`: Force overwrites without prompting (use cautiously).
-- `--help`: Display usage information for the `setup` command.
-
-Make sure to source ~/.bashrc if you are on the local computer
-
-### Sync Command
-
-The `sync` command is used to synchronize files between the local environment and the robot's remote workspace.
+Set up the environment for a robot either locally or remotely. You can also customize the installation path and force overwrite.
 
 ```bash
-airlab sync <robot_name> [options]
+Usage:
+  $(basename "$0") setup Command [options]
+
+Commands:
+  local                   Setup local environment
+  <system_name>           Setup remote robot environment
+
+Options:
+  --path=<path>           Custom installation path (default: $DEFAULT_AIRLAB_PATH)
+  --force                 Force overwrite without prompting (use with caution)
+
+Examples:
+  $(basename "$0") setup local --path=/custom/path
+  $(basename "$0") setup robot1 --path=~/custom/path --force
 ```
 
-#### Options
+### sync
 
-- `--dry-run`: Show what would be synchronized without making any changes.
-- `--delete`: Overwrite the current contents in the directory on the remote machine (same as `--delete` in `rsync`).
-- `--path=<relative_path>`: Sync only the contents of the specified relative path within the workspace.
-- `--exclude=<pattern>`: Exclude files or directories matching the pattern from synchronization.
-- `--help`: Display usage information for the `sync` command.
-
-### Launch Command
-
-The `launch` command is used to start or stop tmux sessions for robots, either locally or on a remote system.
+Synchronize code with a remote robot. This command supports various options to control what is synced, such as excluding files or syncing specific paths.
 
 ```bash
-airlab launch <robot_name> [options]
+Usage:
+  airlab sync <robot_name> [options]
+
+Arguments:
+  <robot_name>              Name of the robot to sync with (must be defined in robot.conf)
+
+Options:
+  --dry-run                 Show what would be synchronized without making changes
+  --delete                  Overwrite the current contents in the directory on the remote machine
+  --path=<relative_path>    Sync only the contents of the given path
+  --exclude=<pattern>       Exclude files or directories matching the pattern
+  --help                    Show this help message
+
+Examples:
+  airlab sync mt001                          # Sync files to mt001
+  airlab sync mt001 --dry-run                # Show what would be synced to mt001
+  airlab sync mt001 --delete                 # Sync files and delete files not present locally
+  airlab sync mt001 --path=src/path          # Sync only the contents of src/path to mt001
+  airlab sync mt001 --exclude='*.log'        # Exclude all .log files from being synced
+  airlab sync mt001 --exclude='temp/'        # Exclude the 'temp' directory from being synced
+  airlab sync mt001 --exclude='*.log' --path=src/path  # Sync only src/path excluding .log files
 ```
 
-#### Options
+### docker-build
 
-- `--system=<target_system>`: Launch or stop a session on a remote system specified in `robot.conf`.
-- `--stop`: Stop the tmux session instead of starting it.
-- `--help`: Display usage information for the `launch` command.
-
-## Examples
-
-
-### Setup Examples
-
-Set up the local environment with a custom path:
+Build Docker images using `docker-compose`. This command allows you to specify a custom Docker Compose file and a system for remote operations.
 
 ```bash
-airlab setup local --path=/custom/path
+Usage:
+  airlab docker-build [--system=<system_name>] [--compose=<compose_file>]
+
+Options:
+  --system=<system_name>    Specify the system name for remote operations.
+  --compose=<compose_file>  Specify a Docker Compose file (default: docker-compose.yml).
+  --help                    Display this help message.
+
+Examples:
+  airlab docker-build
+  airlab docker-build --compose=docker-compose-orin.yml
+  airlab docker-build --system=robot1 --compose=docker-compose-orin.yml
 ```
 
-Set up the environment for `robot1` with a custom path, forcing overwrites:
+### docker-join
+
+Attach to a running Docker container. You can specify the container name and target a remote system.
 
 ```bash
-airlab setup robot1 --path=/custom/path --force
+Usage:
+  airlab docker-join [--system=<system_name>] [--name=<container_name>]
+
+Options:
+  --system=<system_name>    Specify the system name for remote operations.
+  --name=<container_name>   Specify the container to join.
+  --help                    Display this help message.
+
+Examples:
+  airlab docker-join
+  airlab docker-join --name=testcontainer
+  airlab docker-join --system=robot1 --name=testcontainer
 ```
 
-### Sync Examples
+### docker-list
 
-Sync all files to the robot `mt001`:
+List active Docker containers. You can list running containers locally or on a remote system and optionally display images.
 
 ```bash
-airlab sync mt001
+Usage:
+  airlab docker-list [--system=<system_name>] [--images]
+
+Options:
+  --system=<system_name>    Specify the system name for remote operations.
+  --images                  List Docker images.
+  --help                    Display this help message.
+
+Examples:
+  airlab docker-list
+  airlab docker-list --images
+  airlab docker-list --system=robot1 --images
 ```
 
-Perform a dry-run to see what would be synced:
+### docker-up
+
+Start Docker containers using `docker-compose`. You can specify a custom Docker Compose file and target a remote system.
 
 ```bash
-airlab sync mt001 --dry-run
-```
+Usage:
+  airlab docker-up [--system=<system_name>] [--compose=<compose_file>]
 
-Sync and remove any files on the remote that are not in the local directory:
+Options:
+  --system=<system_name>    Specify the system name for remote operations.
+  --compose=<compose_file>  Specify a Docker Compose file (default: docker-compose.yml).
+  --help                    Display this help message.
 
-```bash
-airlab sync mt001 --delete
-```
-
-Sync only the contents of `src/path`:
-
-```bash
-airlab sync mt001 --path=src/path
-```
-
-Exclude `.log` files while syncing:
-
-```bash
-airlab sync mt001 --exclude='*.log'
-```
-
-### Launch Examples
-
-Launch `mt001.yaml` locally:
-
-```bash
-airlab launch mt001
-```
-
-Stop the local `mt001` tmux session:
-
-```bash
-airlab launch mt001 --stop
-```
-
-Launch `mt001.yaml` on the remote system `mt002`:
-
-```bash
-airlab launch mt001 --system=mt002
+Examples:
+  airlab docker-up
+  airlab docker-up --compose=docker-compose-orin.yml
+  airlab docker-up --system=robot1 --compose=docker-compose-orin.yml
 ```
 
 ## Dependencies
 
 `airlab` requires several tools to function correctly:
 
-- **rsync**: For file synchronization.
-- **ssh**: For remote connections.
-- **sshpass**: For non-interactive SSH authentication.
-- **tmux**: For managing sessions.
-- **date**: For time synchronization.
+- **rsync**:            For file synchronization.
+- **ssh**, **ssh-askpass**:              For remote connections.
+- **sshpass**:          For non-interactive SSH authentication.
+- **tmux**:             For managing sessions.
+- **date**:             For time synchronization.
+- **docker**:           For docker operations.
+- **docker-compose-plugin**: For building docker files using docker compose
 - **python3** and **PyYAML**: For YAML configuration parsing.
 
-To install dependencies on a Debian/Ubuntu system:
-
-```bash
-sudo apt-get update
-sudo apt-get install rsync ssh sshpass tmux python3 python3-pip
-pip3 install PyYAML
-```
-
-## Building the Debian Package
-
-To create the Debian package:
-
-1. Ensure you have `dpkg-deb` installed:
-
-   ```bash
-   sudo apt-get install dpkg-dev
-   ```
-
-2. Navigate to the project directory and build the package:
-
-   ```bash
-   dpkg-deb --build airlab
-   ```
-
-3. Install the package:
-
-   ```bash
-   sudo dpkg -i airlab_<version>.deb
-   ```
+The dependencies on a Debian/Ubuntu system are installed uing the presinst sciprt but make sure you have `dpkg-deb` installed if you want to build the repo:
 
 ## Contributing
 
