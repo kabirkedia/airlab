@@ -6,12 +6,7 @@
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Usage](#usage)
-  - [Sync Command](#sync-command)
-  - [Launch Command](#launch-command)
-  - [Setup Command](#setup-command)
-- [Examples](#examples)
 - [Dependencies](#dependencies)
-- [Building the Debian Package](#building-the-debian-package)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -40,14 +35,7 @@ sudo dpkg -i airlab.deb
 ```
 
 ### Installing from Debian Package
-
-Once the package is built, install it using `dpkg`. You can also install the .deb package directly: To create the Debian package:
-
-Ensure you have `dpkg-deb` installed:
-
-   ```bash
-   sudo apt-get install dpkg-dev
-   ```
+You can also it directly using the deb package:
 
 ```bash
 sudo dpkg -i airlab_<version>.deb
@@ -81,6 +69,11 @@ To use `airlab`, you need to set up configuration files for the robots you want 
 
 Make sure to set the `AIRLAB_PATH` environment variable to the root directory of your airlab setup:
 
+The other launch and docker directories are pretty self-explanatory.  
+**PLEASE DON'T DELETE THEM OR MODIFY THEIR NAME.** \
+You may modify the contents in them as per your need.
+
+`airlab.env` is the primary source for all the enviornment variables and is sourced by the bashrc. It has to remain different across all the remote systems.
 
 ## Usage
 
