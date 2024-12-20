@@ -108,7 +108,7 @@ Set up the environment for a robot either locally or remotely. You can also cust
 
 ```bash
 Usage:
-  $(basename "$0") setup Command [options]
+  airlab setup Command [options]
 
 Commands:
   local                   Setup local environment
@@ -119,8 +119,8 @@ Options:
   --force                 Force overwrite without prompting (use with caution)
 
 Examples:
-  $(basename "$0") setup local --path=/custom/path
-  $(basename "$0") setup robot1 --path=~/custom/path --force
+  airlab setup local --path=/custom/path
+  airlab setup robot1 --path=~/custom/path --force
 ```
 
 ### sync
