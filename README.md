@@ -79,13 +79,15 @@ You may modify the contents in them as per your need.
 
 Once installed, you can use the `airlab` command to perform various tasks. Below are the usage details for each command.
 
+*Remember while using **--system** arguement, the system has to be defined in the **robot.conf** file*
+
 ### launch
 
 Launch a robot configuration or stop a tmux session. You can launch configurations locally or on a remote system.
 
 ```bash
 Usage:
-  airlab launch <robot_name> [options]
+  airlab launch <yaml_file> [options]
 
 Arguments:
   <robot_name>              Name of the robot/launch file (without .yaml extension)
@@ -108,19 +110,19 @@ Set up the environment for a robot either locally or remotely. You can also cust
 
 ```bash
 Usage:
-  airlab setup Command [options]
+  airlab setup command [options]
 
 Commands:
   local                   Setup local environment
   <system_name>           Setup remote robot environment
 
 Options:
-  --path=<path>           Custom installation path (default: $DEFAULT_AIRLAB_PATH)
+  --path=<path>           Custom installation path (default: ~/.airlab)
   --force                 Force overwrite without prompting (use with caution)
 
 Examples:
   airlab setup local --path=/custom/path
-  airlab setup robot1 --path=~/custom/path --force
+  airlab setup mt001 --path=~/custom/path --force
 ```
 
 ### sync
@@ -130,9 +132,6 @@ Synchronize code with a remote robot. This command supports various options to c
 ```bash
 Usage:
   airlab sync <robot_name> [options]
-
-Arguments:
-  <robot_name>              Name of the robot to sync with (must be defined in robot.conf)
 
 Options:
   --dry-run                 Show what would be synchronized without making changes
