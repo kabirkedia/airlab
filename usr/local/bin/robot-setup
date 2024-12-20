@@ -2,7 +2,7 @@
 
 # Constants
 readonly ENV_FILE="/etc/airlab/airlab.env"
-readonly DEFAULT_AIRLAB_PATH="$HOME/.airlab"
+readonly DEFAULT_AIRLAB_PATH="$HOME/airlab"
 
 # Color codes for output
 readonly RED='\033[0;31m'

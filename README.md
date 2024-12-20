@@ -43,6 +43,8 @@ sudo dpkg -i airlab_<version>.deb
 
 ## Configuration
 
+*Before configuring please setup the workspace using airlab setup. Details are in usgae below*
+
 To use `airlab`, you need to set up configuration files for the robots you want to manage:
 
 1. **robot.conf**: Contains SSH addresses for each robot. It should be located at `$AIRLAB_PATH/robot/robot.conf`. The format is:
@@ -106,7 +108,9 @@ Examples:
 
 ### setup
 
-Set up the environment for a robot either locally or remotely. You can also customize the installation path and force overwrite.
+Set up the environment for a robot either locally or remotely. You can also customize the installation path and force overwrite. 
+
+*Note:Please use sudo while using the command.*
 
 ```bash
 Usage:
@@ -129,6 +133,8 @@ Examples:
 
 Synchronize code with a remote robot. This command supports various options to control what is synced, such as excluding files or syncing specific paths.
 
+*Uses rsync as the default way to sync*
+
 ```bash
 Usage:
   airlab sync <robot_name> [options]
@@ -141,13 +147,13 @@ Options:
   --help                    Show this help message
 
 Examples:
-  airlab sync mt001                          # Sync files to mt001
-  airlab sync mt001 --dry-run                # Show what would be synced to mt001
-  airlab sync mt001 --delete                 # Sync files and delete files not present locally
-  airlab sync mt001 --path=src/path          # Sync only the contents of src/path to mt001
-  airlab sync mt001 --exclude='*.log'        # Exclude all .log files from being synced
-  airlab sync mt001 --exclude='temp/'        # Exclude the 'temp' directory from being synced
-  airlab sync mt001 --exclude='*.log' --path=src/path  # Sync only src/path excluding .log files
+  airlab sync mt001                       #Sync files to mt001
+  airlab sync mt001 --dry-run             #Show files that will be changed
+  airlab sync mt001 --delete              #Same as --delete in rsync
+  airlab sync mt001 --path=src/path       #Sync only the contents of src/path to mt001
+  airlab sync mt001 --exclude='*.log'     #Exclude all .log files from being synced
+  airlab sync mt001 --exclude='temp/'     #Exclude the 'temp' directory from being synced
+  airlab sync mt001 --exclude='*.log' --path=src/path  
 ```
 
 ### docker-build
