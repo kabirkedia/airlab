@@ -1,8 +1,10 @@
 #!/bin/bash
 
 # Constants
+
+USER_HOME=$(getent passwd $SUDO_USER | cut -d: -f6)
 readonly ENV_FILE="/etc/airlab/airlab.env"
-readonly DEFAULT_AIRLAB_PATH="$HOME/airlab"
+readonly DEFAULT_AIRLAB_PATH="$USER_HOME/airlab_ws"
 
 # Color codes for output
 readonly RED='\033[0;31m'
@@ -18,7 +20,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 # Function to display usage
 show_usage() {
     echo -e "${YELLOW}Usage:${NC}"
-    echo "  $(basename "$0") setup Command [options]"
+    echo "  airlab setup Command [options]"
     echo
     echo -e "${YELLOW}Commands:${NC}"
     echo "  local                   Setup local environment"
@@ -29,8 +31,8 @@ show_usage() {
     echo "  --force                 Force overwrite without prompting (use with caution)"
     echo
     echo -e "${YELLOW}Examples:${NC}"
-    echo "  $(basename "$0") setup local --path=/custom/path"
-    echo "  $(basename "$0") setup robot1 --path=~/custom/path --force"
+    echo "  airlab setup local --path=/custom/path"
+    echo "  airlab setup robot1 --path=~/custom/path --force"
 }
 
 
@@ -88,7 +90,7 @@ save_env() {
 
 setup_bashrc() {
     local env_path="$1"
-    local bashrc="$HOME/.bashrc"
+    local bashrc="$USER_HOME/.bashrc"
     local env_source="set -o allexport; source $env_path/airlab.env; set +o allexport"
 
     if ! grep -q "source $env_path/airlab.env" "$bashrc"; then
@@ -146,7 +148,7 @@ setup_local() {
     fi
 
     # Setup environment
-    sed -i '/source .*airlab.env/d' ~/.bashrc
+    sed -i '/source .*airlab.env/d' $USER_HOME/.bashrc
     setup_bashrc "$airlab_path"
         cat > $airlab_path/airlab.env << EOF
 AIRLAB_PATH=$airlab_path
@@ -238,10 +240,11 @@ remote_copy() {
 setup_remote() {
     local robot_name="$1"
     local airlab_path="$2"
-    local remote_path="$3"
-    local force="$4"
+    local force="$3"
     
     # Validate robot configuration
+    source $USER_HOME/.bashrc
+    local remote_path=$AIRLAB_PATH 
     local robots_conf="$remote_path/robot/robot.conf"
     [[ ! -f "$robots_conf" ]] && error_exit "Robot configuration not found: $robots_conf"
 
@@ -266,7 +269,8 @@ setup_remote() {
     remote_home_dir=$(sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "echo \$HOME" | sed 's/^HOME=//')
     airlab_path=$(echo "$airlab_path" | sed "s|^~|$remote_home_dir|")
 
-    log_info $airlab_path
+    log_info "Checking for workspace setup at $airlab_path"
+
     if sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "[ -d '$airlab_path' ]"; then
         log_warn "Directory exists."
         if [ "$force" = true ]; then
@@ -292,10 +296,16 @@ setup_remote() {
     # Install package if needed
     if ! sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "dpkg -l | grep -q '^ii.*airlab'" ; then
         log_info "Installing airlab package..."
-        remote_copy "$HOME/.airlab/airlab.deb" "$robot_ssh_address:/tmp/airlab.deb" "$robot_password"
-        remote_exec "$robot_ssh_address" "bash -c 'echo \"$robot_password\" | sudo -S -p \"\" dpkg -i /tmp/airlab.deb'" "$robot_password"
+        sudo curl -L -o /tmp/airlab.zip https://github.com/kabirkedia/airlab/archive/refs/heads/main.zip
+        remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S rm -rf /tmp/airlab-main /tmp/airlab-main.deb /tmp/airlab.zip" "$robot_password"
+        remote_copy "/tmp/airlab.zip" "$robot_ssh_address:/tmp/airlab.zip" "$robot_password"
+        remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S unzip -o /tmp/airlab.zip -d /tmp/" "$robot_password"
+        remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S chmod a+x -R /tmp/airlab-main" "$robot_password"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S apt-get install -f -y" "$robot_password"
-        remote_exec "$robot_ssh_address" "rm -f /tmp/airlab.deb" "$robot_password"
+        remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg-deb --build /tmp/airlab-main" "$robot_password"
+        remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg -i /tmp/airlab-main.deb" "$robot_password"
+        remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S apt-get install -f -y" "$robot_password"
+        remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S rm -rf /tmp/airlab-main /tmp/airlab-main.deb /tmp/airlab.zip" "$robot_password"
     fi
 
     # Configure environment
@@ -327,10 +337,13 @@ update_robot_info "$remote_path" "$robot_name" "ws_path" "$airlab_path"
 }
 
 main() {
+    if [[ "$EUID" -ne 0 ]]; then
+        echo "This script must be run as root. Please use sudo."
+        exit 1
+    fi
     [[ $# -lt 1 ]] && { show_usage; error_exit "No command provided"; }
 
     local command="$1"
-    local remote_path="$AIRLAB_PATH"
     shift
 
     read -r AIRLAB_PATH FORCE <<< "$(parse_args "$@")"
@@ -343,7 +356,7 @@ main() {
             show_usage
             ;;
         *)
-            setup_remote "$command" "$AIRLAB_PATH" "$remote_path" "$FORCE"
+            setup_remote "$command" "~/airlab_ws" "$FORCE"
             ;;
     esac
 }

@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Define paths
+LOCAL_FILE="x.txt"
+REMOTE_FILE="x.txt"
+REMOTE_USER="username"
+REMOTE_HOST="remote_host"
+REMOTE_PATH="/path/to/$REMOTE_FILE"
+
+# Step 1: Extract first 5 lines from remote file
+ssh "$REMOTE_USER@$REMOTE_HOST" "head -n 5 $REMOTE_PATH" > remote_header.tmp
+
+# Step 2: Extract the rest of the local file (skip first 5 lines)
+tail -n +6 "$LOCAL_FILE" > local_body.tmp
+
+# Step 3: Combine the header from the remote file and the body from the local file
+cat remote_header.tmp local_body.tmp > combined.tmp
+
+# Step 4: Overwrite the remote file with the combined file
+scp combined.tmp "$REMOTE_USER@$REMOTE_HOST:$REMOTE_PATH"
+
+# Clean up temporary files
+rm -f remote_header.tmp local_body.tmp combined.tmp
+
+echo "Sync completed while preserving the first 5 lines of the remote file."

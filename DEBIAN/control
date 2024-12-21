@@ -5,5 +5,5 @@ Priority: optional
 Architecture: all
 Essential: no
 Maintainer: Kabir Kedia <kabirkedia0111@gmail.com>
-Description: Airlab custom Linux command
- A custom command package for Linux to handle various tasks.
+Description: Airlab custom Linux command: A custom command package for Linux to handle various tasks.
+Depends: tmux, tmuxp, python3-pip, openssh-server,sshpass, git, docker-ce, containerd.io, rsync, nvidia-container-toolkit

@@ -43,35 +43,27 @@ sudo dpkg -i airlab_<version>.deb
 
 ## Configuration
 
-*Before configuring please setup the workspace using airlab setup. Details are in usgae below*
+*Before configuring please setup the workspace using airlab setup. Details are in [usage](#usage) below*
 
 To use `airlab`, you need to set up configuration files for the robots you want to manage:
+
+`$AIRLAB_PATH` is a variable that contains your workspace for configuration files. it defaults to `$HOME/airlab` but can be customized while setting up the workspace configuration using the setup command.
 
 1. **robot.conf**: Contains SSH addresses for each robot. It should be located at `$AIRLAB_PATH/robot/robot.conf`. The format is:
 
    ```
    <robot_name>=<robot_ssh_address>
+   spot1=192.168.0.0
    ```
 
-   Example:
-   
-   ```
-   mt001=user@192.168.1.10
-   mt002=user@192.168.1.11
-   ```
+2. **launch/sample.yaml**: Contains sample launch files for each robot. It should be located at `$AIRLAB_PATH/launch/launch.conf`.  
+I use **tmuxp** as the underlying tool for launch file configurations. More details about tmuxp can be found [here](https://github.com/tmux-python/tmuxp).
 
-2. **robot_info.yaml**: Contains additional robot information, like workspace paths. It should be located at `$AIRLAB_PATH/robot/robot_info.yaml`. It is automatically generated when you run the setup command on a new robot:
+2. **dcoker/sample.yaml**: Contains sample docker and docker-compose files for each robot. It should be located at `$AIRLAB_PATH/docker`.  
+I use **tmuxp** as the underlying tool for launch file configurations. More details about tmuxp can be found [here](https://github.com/tmux-python/tmuxp).
 
-   ```yaml
-   mt001:
-     ws_path: "/home/user/robot_ws"
-   mt002:
-     ws_path: "/home/user/another_ws"
-   ```
 
-Make sure to set the `AIRLAB_PATH` environment variable to the root directory of your airlab setup:
 
-The other launch and docker directories are pretty self-explanatory.  
 **PLEASE DON'T DELETE THEM OR MODIFY THEIR NAME.** \
 You may modify the contents in them as per your need.
 
@@ -82,29 +74,6 @@ You may modify the contents in them as per your need.
 Once installed, you can use the `airlab` command to perform various tasks. Below are the usage details for each command.
 
 *Remember while using **--system** arguement, the system has to be defined in the **robot.conf** file*
-
-### launch
-
-Launch a robot configuration or stop a tmux session. You can launch configurations locally or on a remote system.
-
-```bash
-Usage:
-  airlab launch <yaml_file> [options]
-
-Arguments:
-  <robot_name>              Name of the robot/launch file (without .yaml extension)
-
-Options:
-  --system=<target_system>  Launch on a remote system defined in robot.conf
-  --stop                    Stop the tmux session instead of starting it
-  --help                    Show this help message
-
-Examples:
-  airlab launch mt001                       # Launch mt001.yaml locally
-  airlab launch mt001 --stop               # Stop local mt001 tmux session
-  airlab launch mt001 --system=mt002       # Launch mt001.yaml on mt002
-  airlab launch mt001 --system=mt002 --stop # Stop mt001 tmux session on mt002
-```
 
 ### setup
 
@@ -127,6 +96,30 @@ Options:
 Examples:
   airlab setup local --path=/custom/path
   airlab setup mt001 --path=~/custom/path --force
+```
+
+
+### launch
+
+Launch a robot configuration or stop a tmux session. You can launch configurations locally or on a remote system.
+
+```bash
+Usage:
+  airlab launch <yaml_file> [options]
+
+Arguments:
+  <robot_name>              Name of the robot/launch file (without .yaml extension)
+
+Options:
+  --system=<target_system>  Launch on a remote system defined in robot.conf
+  --stop                    Stop the tmux session instead of starting it
+  --help                    Show this help message
+
+Examples:
+  airlab launch mt001                       # Launch mt001.yaml locally
+  airlab launch mt001 --stop               # Stop local mt001 tmux session
+  airlab launch mt001 --system=mt002       # Launch mt001.yaml on mt002
+  airlab launch mt001 --system=mt002 --stop # Stop mt001 tmux session on mt002
 ```
 
 ### sync

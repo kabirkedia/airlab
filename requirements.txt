@@ -2,16 +2,17 @@ apt:
     tmux
     tmuxp
     python3-pip
+    openssh-server
     sshpass
     ssh-askpass
     git
-    docker
     docker-compose-plugin
-    ssh
     rsync
     date
-    docker
     nvidia-container-toolkit
+    docker-ce 
+    docker-ce-cli 
+    containerd.io
 pip:
     pyyaml
     
