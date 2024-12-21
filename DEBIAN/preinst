@@ -1,46 +1,106 @@
-ARCH=$(uname -m)
+#!/bin/bash
+set -e  # Exit on any error
 
-## For Docker
-DOCKER_LIST="/etc/apt/sources.list.d/docker.list"
+# Function to handle errors
+error_handler() {
+    local line_number=$1
+    local error_code=$2
+    echo "Error occurred in line ${line_number} with exit code ${error_code}"
+    exit ${error_code}
+}
 
-# Check if Docker's repository already exists
-if [ ! -f "$DOCKER_LIST" ]; then
-    echo "Adding Docker's official repository for architecture $ARCH..."
-    echo "deb [arch=$ARCH signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
-        sudo tee "$DOCKER_LIST" > /dev/null
-else
-    echo "Docker's repository already exists. Skipping..."
-fi
+trap 'error_handler ${LINENO} $?' ERR
 
-## For Nvidia-container-toolkit
-NVIDIA_LIST="/etc/apt/sources.list.d/nvidia-container-toolkit.list"
-
-# Check if Nvidia-container-toolkit's repository already exists
-if [ ! -f "$NVIDIA_LIST" ]; then
-    echo "Adding Nvidia-container-toolkit's repository..."
-    curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-        sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-        sudo tee "$NVIDIA_LIST" > /dev/null
-else
-    echo "Nvidia-container-toolkit's repository already exists. Skipping..."
-fi
-
-# Ensure pip3 is available
-echo "Checking for pip3..."
-PIP_PATH=$(which pip3)
-if [ ! -x "$PIP_PATH" ]; then
-    echo "pip3 is not installed. Aborting."
+# Check if running as root/sudo
+if [ "$EUID" -ne 0 ]; then 
+    echo "This script must be run as root or with sudo privileges"
     exit 1
 fi
 
-# List of PIP packages to install
-PIP_PACKAGES="pyyaml"
+ARCH=$(uname -m)
+if [ -z "$ARCH" ]; then
+    echo "Failed to determine system architecture"
+    exit 1
+fi
 
+# Docker key check and installation
+DOCKER_KEY="/usr/share/keyrings/docker-archive-keyring.gpg"
+if [ -f "$DOCKER_KEY" ]; then
+    echo "Docker GPG key already exists, skipping..."
+else
+    echo "Adding Docker's official GPG key..."
+    if ! curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o "$DOCKER_KEY"; then
+        echo "Failed to add Docker GPG key"
+        exit 1
+    fi
+fi
+
+# Check Docker repository
+DOCKER_LIST="/etc/apt/sources.list.d/docker.list"
+if [ -f "$DOCKER_LIST" ]; then
+    echo "Docker repository already configured, skipping..."
+else
+    echo "Adding Docker's official repository for architecture $ARCH..."
+    if ! echo "deb [arch=$ARCH signed-by=$DOCKER_KEY] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
+        sudo tee "$DOCKER_LIST" > /dev/null; then
+        echo "Failed to add Docker repository"
+        exit 1
+    fi
+fi
+
+# NVIDIA key check and installation
+NVIDIA_KEY="/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg"
+if [ -f "$NVIDIA_KEY" ]; then
+    echo "NVIDIA GPG key already exists, skipping..."
+else
+    echo "Adding NVIDIA Container Toolkit GPG key..."
+    if ! curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o "$NVIDIA_KEY"; then
+        echo "Failed to add NVIDIA GPG key"
+        exit 1
+    fi
+fi
+
+# Check NVIDIA repository
+NVIDIA_LIST="/etc/apt/sources.list.d/nvidia-container-toolkit.list"
+if [ -f "$NVIDIA_LIST" ]; then
+    echo "NVIDIA repository already configured, skipping..."
+else
+    echo "Adding NVIDIA Container Toolkit repository..."
+    if ! curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+        sed 's#deb https://#deb [signed-by='$NVIDIA_KEY'] https://#g' | \
+        sudo tee "$NVIDIA_LIST"; then
+        echo "Failed to add NVIDIA repository"
+        exit 1
+    fi
+fi
+
+# Check for pip3
+echo "Checking for pip3..."
+if ! command -v pip3 &> /dev/null; then
+    echo "pip3 is not installed. Attempting to install..."
+    if ! sudo apt-get update && sudo apt-get install -y python3-pip; then
+        echo "Failed to install pip3"
+        exit 1
+    fi
+fi
+
+# Verify pip3 is executable
+PIP_PATH=$(which pip3)
+if [ ! -x "$PIP_PATH" ]; then
+    echo "pip3 is not executable. Please check permissions."
+    exit 1
+fi
+
+# Install PIP packages with error checking
+PIP_PACKAGES="pyyaml"
 echo "Installing PIP packages..."
 for pkg in $PIP_PACKAGES; do
     if ! pip3 show "$pkg" &>/dev/null; then
         echo "Installing $pkg..."
-        pip3 install "$pkg"
+        if ! pip3 install "$pkg"; then
+            echo "Failed to install $pkg"
+            exit 1
+        fi
     else
         echo "$pkg is already installed."
     fi
