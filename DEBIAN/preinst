@@ -106,4 +106,48 @@ for pkg in $PIP_PACKAGES; do
     fi
 done
 
-echo "All dependencies have been installed successfully."
+## For docker-compose 
+#Install Docker Compose
+DOCKER_COMPOSE_VERSION="2.32.1"  # Replace with your desired version or fetch dynamically
+
+CLI_PLUGIN_PATHS=(
+    "/usr/local/lib/docker/cli-plugins"
+    "/usr/local/libexec/docker/cli-plugins"
+    "/usr/lib/docker/cli-plugins"
+    "/usr/libexec/docker/cli-plugins"
+)
+
+# Determine the correct CLI plugins directory
+CLI_PLUGIN_DIR=""
+for path in "${CLI_PLUGIN_PATHS[@]}"; do
+    if [ -d "$path" ]; then
+        CLI_PLUGIN_DIR="$path" && break
+    fi
+done
+
+if [ -z "$CLI_PLUGIN_DIR" ]; then
+    echo "No valid CLI plugins directory found."
+    exit 1
+fi
+echo "Using CLI plugins directory: $CLI_PLUGIN_DIR"
+DOCKER_COMPOSE_PLUGIN="$CLI_PLUGIN_DIR/docker-compose"
+if [ -f "$DOCKER_COMPOSE_PLUGIN" ]; then
+    INSTALLED_VERSION=$("$DOCKER_COMPOSE_PLUGIN" version | awk '{print $4}' | tr -d ',')
+    echo "Installed Version: $INSTALLED_VERSION"
+    if [ "$INSTALLED_VERSION" > /dev/null ]; then
+        echo "Docker Compose CLI plugin version $INSTALLED_VERSION is already installed."
+        echo "Installation completed successfully"
+        exit 0
+    fi
+    echo "Updating Docker Compose CLI plugin to version $DOCKER_COMPOSE_VERSION..."
+else
+    echo "Installing Docker Compose CLI plugin version $DOCKER_COMPOSE_VERSION..."
+fi
+
+# Download and install/update Docker Compose CLI plugin
+sudo wget "https://github.com/docker/compose/releases/download/v$DOCKER_COMPOSE_VERSION/docker-compose-linux-$(uname -m)" -P "$CLI_PLUGIN_DIR/"
+sudo mv $CLI_PLUGIN_DIR/docker-compose-linux-$(uname -m) $CLI_PLUGIN_DIR/docker-compose
+sudo chmod +x "$DOCKER_COMPOSE_PLUGIN" && \
+echo "Docker Compose CLI plugin installed/updated successfully at $DOCKER_COMPOSE_PLUGIN." || \
+{ echo "Failed to install/update Docker Compose CLI plugin."; exit 1;}
+echo "Installation completed successfully"
