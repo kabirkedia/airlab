@@ -42,6 +42,12 @@ error_exit() {
     exit 1
 }
 
+error_warn() {
+    log_warn "$1"  # Assuming you have a log_warn function for logging warnings
+    return 0       # Continue execution without exiting
+}
+
+
 # Function to parse command line arguments
 parse_args() {
     local args=("$@")
@@ -226,8 +232,15 @@ remote_exec() {
     local host="$1"
     local cmd="$2"
     local password="$3"
+    local warn="${4:-}"  # Optional fourth argument (defaults to empty)
     
-    sshpass -p "$password" ssh -o StrictHostKeyChecking=no "$host" "$cmd" || error_exit "Failed to execute: $cmd"
+    if ! sshpass -p "$password" ssh -o StrictHostKeyChecking=no "$host" "$cmd"; then
+        if [ "$warn" = "warn" ]; then
+            error_warn "Failed to execute(Proceeding): $src to $dest"
+        else
+            error_exit "Failed to execute: $src to $dest"
+        fi
+    fi
 }
 
 remote_copy() {
@@ -256,12 +269,12 @@ setup_remote() {
 
     # Get password securely
     local robot_password
-    echo "Enter password for $robot_ssh_address:"
+    log_info "Enter password for $robot_ssh_address:"
     read -s robot_password
     [[ -z "$robot_password" ]] && error_exit "Password cannot be empty"
     echo
 
-    if ! sshpass -p "$robot_password" ssh -q -o ConnectTimeout=15 "$robot_ssh_address" exit; then
+    if ! sshpass -p "$robot_password" ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "$robot_ssh_address" exit; then
         log_error "Cannot connect to remote system '$robot_ssh_address'"
         exit 1
     fi
@@ -304,7 +317,7 @@ setup_remote() {
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S chmod a+x -R /tmp/airlab-main" "$robot_password"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S apt-get install -f -y" "$robot_password"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg-deb --build /tmp/airlab-main" "$robot_password"
-        remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg -i /tmp/airlab-main.deb" "$robot_password"
+        remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg -i /tmp/airlab-main.deb" "$robot_password" "warn"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S apt-get install -f -y" "$robot_password"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S rm -rf /tmp/airlab-main /tmp/airlab-main.deb /tmp/airlab.zip" "$robot_password"
     else
@@ -319,8 +332,8 @@ setup_remote() {
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S unzip -o /tmp/airlab.zip -d /tmp/" "$robot_password"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S chmod a+x -R /tmp/airlab-main" "$robot_password"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S apt-get install -f -y" "$robot_password"
-            remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg-deb --build /tmp/airlab-main" "$robot_password"
-            remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg -i /tmp/airlab-main.deb" "$robot_password"
+            remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg-deb --build /tmp/airlab-main" "$robot_password" 
+            remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg -i /tmp/airlab-main.deb" "$robot_password" "warn"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S apt-get install -f -y" "$robot_password"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S rm -rf /tmp/airlab-main /tmp/airlab-main.deb /tmp/airlab.zip" "$robot_password"
         fi

@@ -161,7 +161,7 @@ main() {
         echo
 
         # Check SSH connection before attempting any operation
-        if ! sshpass -p "$robot_password" ssh -q -o ConnectTimeout=15 "$ROBOT_SSH_ADDRESS" exit; then
+        if ! sshpass -p "$robot_password" ssh -q -o ConnectTimeout=15 -o StrictHostKeyChecking=no "$ROBOT_SSH_ADDRESS" exit; then
             log_error "Cannot connect to remote system '$ROBOT_SSH_ADDRESS'"
             exit 1
         fi
