@@ -174,6 +174,7 @@ Installation details:
   
 Note: Run 'source ~/.bashrc' to apply changes
 EOF
+    log_info "Please add the ip address used by this system to /etc/hosts"
 }
 
 update_robot_info() {
@@ -244,7 +245,7 @@ setup_remote() {
     
     # Validate robot configuration
     source $USER_HOME/.bashrc
-    local remote_path=$AIRLAB_PATH 
+    local remote_path=$AIRLAB_PATH
     local robots_conf="$remote_path/robot/robot.conf"
     [[ ! -f "$robots_conf" ]] && error_exit "Robot configuration not found: $robots_conf"
 
@@ -306,6 +307,23 @@ setup_remote() {
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg -i /tmp/airlab-main.deb" "$robot_password"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S apt-get install -f -y" "$robot_password"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S rm -rf /tmp/airlab-main /tmp/airlab-main.deb /tmp/airlab.zip" "$robot_password"
+    else
+        read -p "airlab package is installed. Unpack newer verison? (y/N): " confirm
+        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+            log_warn "Skipping installation"
+        else
+            log_info "Installing airlab package..."
+            sudo curl -L -o /tmp/airlab.zip https://github.com/kabirkedia/airlab/archive/refs/heads/main.zip
+            remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S rm -rf /tmp/airlab-main /tmp/airlab-main.deb /tmp/airlab.zip" "$robot_password"
+            remote_copy "/tmp/airlab.zip" "$robot_ssh_address:/tmp/airlab.zip" "$robot_password"
+            remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S unzip -o /tmp/airlab.zip -d /tmp/" "$robot_password"
+            remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S chmod a+x -R /tmp/airlab-main" "$robot_password"
+            remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S apt-get install -f -y" "$robot_password"
+            remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg-deb --build /tmp/airlab-main" "$robot_password"
+            remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg -i /tmp/airlab-main.deb" "$robot_password"
+            remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S apt-get install -f -y" "$robot_password"
+            remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S rm -rf /tmp/airlab-main /tmp/airlab-main.deb /tmp/airlab.zip" "$robot_password"
+        fi
     fi
 
     # Configure environment
@@ -323,7 +341,6 @@ EOF
         echo 'set -o allexport; source $airlab_path/airlab.env; set +o allexport' >> ~/.bashrc" "$robot_password"
     
 
-    log_info "✅ Remote setup completed successfully!"
     cat << EOF
 Installation details:
   - Host: $robot_ssh_address
@@ -332,8 +349,48 @@ Installation details:
   
 Note: Run 'source ~/.bashrc' on the remote system to apply changes
 EOF
-update_robot_info "$remote_path" "$robot_name" "robot_ssh" "$robot_ssh_address"
-update_robot_info "$remote_path" "$robot_name" "ws_path" "$airlab_path"
+    update_robot_info "$remote_path" "$robot_name" "robot_ssh" "$robot_ssh_address"
+    update_robot_info "$remote_path" "$robot_name" "ws_path" "$airlab_path"
+
+    log_info "Adding $robot_name to /etc/hosts file locally"
+    ip_addr=$(echo $robot_ssh_address | sed 's/.*@//')
+
+    [ -z "$ip_addr" ] && { log_error "Failed to parse IP"; exit 1; }
+
+    if grep -q "$robot_name" /etc/hosts; then
+        read -p "$robot_name exists. Overwrite? (y/n): " confirm
+        if [[ "$confirm" == [yY] ]]; then
+            sudo sed -i "/$robot_name/d" /etc/hosts && \
+            sudo sed -i "$ a $ip_addr $robot_name  #$robot_name:$robot_ssh_address" /etc/hosts && \
+            log_info "Entry updated" || log_error "Update failed"
+        else
+            log_info "Keeping existing entry"
+        fi
+    else
+        sudo sed -i "$ a $ip_addr $robot_name  #$robot_name:$robot_ssh_address" /etc/hosts && \
+        log_info "Entry added" || log_info "Addition failed"
+    fi
+
+    #Sync /etc/hosts
+    log_info "Sync /etc/hosts to $robot_name.(This doesn't change local-host)"
+    sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "head -n 9 /etc/hosts" > remote_header.tmp
+    sudo tail -n +9 "/etc/hosts" > local_body.tmp
+    sudo cat remote_header.tmp local_body.tmp > combined.tmp
+    remote_copy "combined.tmp" "$robot_ssh_address:/tmp/hosts" "$robot_password"
+    remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S mv /tmp/hosts /etc/hosts" "$robot_password"
+    remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S rm -rf /tmp/hosts" "$robot_password"
+    sudo rm -f remote_header.tmp local_body.tmp combined.tmp
+    log_info "Sync completed"
+    log_info "✅ Remote setup completed successfully!"
+
+    log_info "It is recommended to reboot the remote system"
+    read -p "Restart the system (y/n)" confirm
+    if [[ "$confirm" == [yY] ]]; then
+        sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "echo '$robot_password' | sudo -S reboot" 
+    else
+        log_info "Skipping"
+    fi
+
 }
 
 main() {

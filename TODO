@@ -1,6 +1,9 @@
-1. make .airlab as not the default repo
-2. how to host this package
-3. compile using github not copy .deb
-4. Make a much better README.md
-5. in setup mention we follow tmuxp
-6. change hostname while setting up
+1. Make a much better README.md
+2. Use docker-compose from github in preinstall script
+3. Add python-vcstool to deal with multiple git packages
+4. *Maybe: Remove the robot_info.yaml or use it such that user can add enviornment variables directly to the robot it. Will go well with sync*
+
+**Done**
+
+1. Solved Racing conditions
+2. Completed the Robot-Setup script with Adding Hostnames
