@@ -92,7 +92,7 @@ if [ ! -x "$PIP_PATH" ]; then
 fi
 
 # Install PIP packages with error checking
-PIP_PACKAGES="pyyaml"
+PIP_PACKAGES="pyyaml vcstool"
 echo "Installing PIP packages..."
 for pkg in $PIP_PACKAGES; do
     if ! pip3 show "$pkg" &>/dev/null; then

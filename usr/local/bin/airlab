@@ -17,6 +17,7 @@ function show_usage() {
     echo "  docker-up                     Start Docker containers using docker-compose."
     echo "  docker-join                   Attach to a running Docker container."
     echo "  docker-list                   List active Docker containers."
+    echo "  vcstool                       Use basic git functions with multiple repositories."
     echo "Run 'airlab <command>' for specific command usage."
 }
 
@@ -66,6 +67,11 @@ case "$COMMAND" in
         # Join Dockerfiles in the right place
         /usr/local/bin/docker-list "$@"
         ;; 
+    vcstool)
+        # Join Dockerfiles in the right place
+        /usr/local/bin/version-control/vcstool "$@"
+        ;; 
+    
     --help)
         show_usage
         exit 0
