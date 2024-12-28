@@ -6,7 +6,7 @@ apt:
     sshpass
     ssh-askpass
     git
-    docker-compose-plugin
+    docker-compose
     rsync
     date
     nvidia-container-toolkit
@@ -15,4 +15,5 @@ apt:
     containerd.io
 pip:
     pyyaml
+    python3-vcstool
     

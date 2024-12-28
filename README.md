@@ -1,244 +1,470 @@
 # Airlab
 
-`airlab` is a command-line tool designed to streamline interactions between a local environment and remote robotic systems. It supports file synchronization, launch file management, and setup for both local and remote environments. `airlab` can also be installed as a Debian package, allowing easy deployment and updates.
+### **`airlab`: Simplified Deployment for Robotic Systems**  
 
-## Table of Contents
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [Dependencies](#dependencies)
-- [Contributing](#contributing)
-- [License](#license)
+`airlab` is a command-line tool that unifies essential deployment tasks for local and remote robotic systems. It streamlines file synchronization, launch file management, and environment setup by integrating tools like `rsync`, `docker`, and `tmux`.  
 
-## Installation
+Key features:  
+- **File Sync**: Easy local-to-remote transfers.  
+- **Launch Management**: Simplified robotic launch file handling.  
+- **Environment Setup**: Automated configurations.  
+- **Unified Interface**: Combines multiple tools under one command.  
+- **Debian Package**: Quick install and updates for seamless deployment.  
 
-To install `airlab`, you can either build the Debian package (see [Building the Debian Package](#building-the-debian-package)) or manually copy the script to a directory in your `PATH`.
+`airlab` reduces complexity and accelerates workflows, making it an essential utility for robotics development and deployment.  
 
-### Manual Installation
 
-Clone the repository and place the `airlab` script in a directory that's included in your system's `PATH`:
+### **Installing `airlab`**  
 
-Ensure you have `dpkg-deb` installed:
+`airlab` is installed on the host machine that controls remote robotic systems. Remote systems are set up using the `setup` command, which automates much of the configuration.  
 
+#### **Prerequisites**  
+Ensure `dpkg-deb` is installed on your host machine:  
+```bash
+sudo apt-get install dpkg-dev
+```  
+
+#### **Installation Steps**  
+
+1. **Clone the Repository**:  
    ```bash
-   sudo apt-get install dpkg-dev
-   ```
-Now you can proceed to installation using the following commands. The chmod command might be confusing. You may using something else but the goal should be that all files inside the airlab directory should be executable.
+   git clone <repository-url>
+   cd airlab
+   ```  
 
+2. **Set File Permissions**:  
+   To ensure all files are executable, run:  
+   ```bash
+   chmod -R a+rX *
+   ```  
+
+   > *Note*: The goal is to make all files within the `airlab` directory executable. You can use other methods to achieve this if preferred.  
+
+3. **Build the Debian Package**:  
+   ```bash
+   cd ..
+   dpkg-deb --build airlab
+   ```  
+
+4. **Install `airlab`**:  
+   ```bash
+   sudo dpkg -i airlab.deb
+   sudo apt install -f -y
+   ```  
+
+#### **Note on Dependencies**  
+`airlab` depends on the libraries listed in `requirements.txt`, but you don't need to install them manually.  
+- **Python dependencies** and `docker-compose` are installed using the **preinstall script**.  
+- Other system dependencies are installed when you run:  
+   ```bash
+   sudo apt install -f -y
+   ```  
+This ensures all missing dependencies are handled seamlessly during installation.  
+
+Once installed, you’re ready to use `airlab` for managing your robotic systems. For remote systems, you don't need to install it just use the [`setup`]() command to configure them efficiently.  
+
+
+## Commands
+
+Once installed, you can use the `airlab` command to perform various tasks. Below are the usage details for each command. The most important command to run before using any other command is `setup`. 
+
+
+### Setup
+
+#### Usage
 ```bash
-git clone <repository-url>
-cd airlab
-chmod -R a+rX *           # To set all files as executable
-cd ..
-dpkg-deb --build airlab
-sudo dpkg -i airlab.deb
+# Local setup
+airlab setup local [--path=<install_path>] [--force]
+
+# Remote setup
+airlab setup <robot_name> [--path=<install_path>] [--force]
 ```
 
-### Installing from Debian Package
-You can also it directly using the deb package:
+#### Options
+- `--path`: Installation directory (default: ~/airlab_ws)
+- `--force`: Overwrite existing installation
+- `<robot_name>`: Robot identifier from robot.conf
 
+#### Configuration Files
+- Robot config: `robot.conf` in workspace's robot folder
+- Environment: `airlab.env` (created during setup)
+- Bash config: Updates to `.bashrc`
+
+#### Quick Examples
 ```bash
-sudo dpkg -i airlab_<version>.deb
+# Local setup
+airlab setup local --path=/opt/airlab_ws
+airlab setup local --force
+
+# Remote setup
+airlab setup robot1 --path=/home/airlab/ws
+airlab setup robot1 --force
 ```
 
-## Configuration
+#### Setup Process
+##### Local
+1. Creates directory structure
+2. Copies configuration files
+3. Sets environment variables
+4. Updates .bashrc
+5. Creates airlab.env
 
-*Before configuring please setup the workspace using airlab setup. Details are in [usage](#usage) below*
-
-To use `airlab`, you need to set up configuration files for the robots you want to manage:
-
-`$AIRLAB_PATH` is a variable that contains your workspace for configuration files. it defaults to `$HOME/airlab` but can be customized while setting up the workspace configuration using the setup command.
-
-1. **robot.conf**: Contains SSH addresses for each robot. It should be located at `$AIRLAB_PATH/robot/robot.conf`. The format is:
-
-   ```
-   <robot_name>=<robot_ssh_address>
-   spot1=192.168.0.0
-   ```
-
-2. **launch/sample.yaml**: Contains sample launch files for each robot. It should be located at `$AIRLAB_PATH/launch/launch.conf`.  
-I use **tmuxp** as the underlying tool for launch file configurations. More details about tmuxp can be found [here](https://github.com/tmux-python/tmuxp).
-
-2. **dcoker/sample.yaml**: Contains sample docker and docker-compose files for each robot. It should be located at `$AIRLAB_PATH/docker`.  
-I use **tmuxp** as the underlying tool for launch file configurations. More details about tmuxp can be found [here](https://github.com/tmux-python/tmuxp).
-
-
-
-**PLEASE DON'T DELETE THEM OR MODIFY THEIR NAME.** \
-You may modify the contents in them as per your need.
-
-`airlab.env` is the primary source for all the enviornment variables and is sourced by the bashrc. It has to remain different across all the remote systems.
-
-## Usage
-
-Once installed, you can use the `airlab` command to perform various tasks. Below are the usage details for each command.
-
-*Remember while using **--system** arguement, the system has to be defined in the **robot.conf** file*
-
-### setup
-
-Set up the environment for a robot either locally or remotely. You can also customize the installation path and force overwrite. 
-
-*Note:Please use sudo while using the command.*
-
+##### Remote
+1. Establishes SSH connection
+2. Performs environment setup
+3. Copies necessary files
+4. Installs required packages
+5. Updates .bashrc
+6. Configures /etc/hosts
+##### Robot Configuration
+In robot.conf:
 ```bash
-Usage:
-  airlab setup command [options]
-
-Commands:
-  local                   Setup local environment
-  <system_name>           Setup remote robot environment
-
-Options:
-  --path=<path>           Custom installation path (default: ~/.airlab)
-  --force                 Force overwrite without prompting (use with caution)
-
-Examples:
-  airlab setup local --path=/custom/path
-  airlab setup mt001 --path=~/custom/path --force
+robot1=airlab@192.45.34.1
+robot2=airlab@192.45.34.2
 ```
 
+#### Common Issues
+1. "Permission denied": Check installation path permissions
+2. "SSH connection failed": Verify robot.conf entries
+3. "Configuration exists": Use --force to overwrite
+4. "Environment not set": Check airlab.env and .bashrc
 
-### launch
+Detailed Documentation is present [here](/usr/local/bin/docs/setup.md)
 
-Launch a robot configuration or stop a tmux session. You can launch configurations locally or on a remote system.
+---
 
+
+### Sync
+
+#### Usage
 ```bash
-Usage:
-  airlab launch <yaml_file> [options]
-
-Arguments:
-  <robot_name>              Name of the robot/launch file (without .yaml extension)
-
-Options:
-  --system=<target_system>  Launch on a remote system defined in robot.conf
-  --stop                    Stop the tmux session instead of starting it
-  --help                    Show this help message
-
-Examples:
-  airlab launch mt001                       # Launch mt001.yaml locally
-  airlab launch mt001 --stop               # Stop local mt001 tmux session
-  airlab launch mt001 --system=mt002       # Launch mt001.yaml on mt002
-  airlab launch mt001 --system=mt002 --stop # Stop mt001 tmux session on mt002
+airlab sync <robot_name> [options]
 ```
 
-### sync
+#### Options
+- `--dry-run`: Preview sync without changes
+- `--delete`: Remove extra files on remote
+- `--path=<relative_path>`: Sync specific directory
+- `--exclude=<pattern>`: Skip matching files
+- `--time`: Sync system time
+- `--help`: Show help
 
-Synchronize code with a remote robot. This command supports various options to control what is synced, such as excluding files or syncing specific paths.
+#### Configuration Files
+- Robot config: `$AIRLAB_PATH/robot/robot.conf`
+- Robot info: `$AIRLAB_PATH/robot/robot_info.yaml`
 
-*Uses rsync as the default way to sync*
-
+#### Quick Examples
 ```bash
-Usage:
-  airlab sync <robot_name> [options]
+# Basic sync
+airlab sync mt001                    # Sync all files
+airlab sync mt001 --dry-run         # Preview changes
+airlab sync mt001 --delete          # Remove extra files
 
-Options:
-  --dry-run                 Show what would be synchronized without making changes
-  --delete                  Overwrite the current contents in the directory on the remote machine
-  --path=<relative_path>    Sync only the contents of the given path
-  --exclude=<pattern>       Exclude files or directories matching the pattern
-  --help                    Show this help message
-
-Examples:
-  airlab sync mt001                       #Sync files to mt001
-  airlab sync mt001 --dry-run             #Show files that will be changed
-  airlab sync mt001 --delete              #Same as --delete in rsync
-  airlab sync mt001 --path=src/path       #Sync only the contents of src/path to mt001
-  airlab sync mt001 --exclude='*.log'     #Exclude all .log files from being synced
-  airlab sync mt001 --exclude='temp/'     #Exclude the 'temp' directory from being synced
-  airlab sync mt001 --exclude='*.log' --path=src/path  
+# Advanced sync
+airlab sync mt001 --path=src/config # Sync specific path
+airlab sync mt001 --exclude='*.log' # Skip log files
 ```
 
-### docker-build
+#### Default Exclusions
+- `.git/`, `build/`, `devel/`, `log/`
+- `install/`, `*.pyc`, `__pycache__`
+- `*.env`
 
-Build Docker images using `docker-compose`. This command allows you to specify a custom Docker Compose file and a system for remote operations.
+#### Dependencies
+- rsync
+- ssh
+- sshpass
+- date
+- python3 (with PyYAML)
 
+#### Common Issues
+1. "SSH connection failed": Check network/credentials
+2. "Workspace not found": Verify robot_info.yaml
+3. "Sync failed": Check permissions/space
+4. "Time sync failed": Check sudo access
+
+Detailed Documentation is present [here](/usr/local/bin/docs/sync.md)
+
+---
+
+### Launch
+
+#### Usage
 ```bash
-Usage:
-  airlab docker-build [--system=<system_name>] [--compose=<compose_file>]
-
-Options:
-  --system=<system_name>    Specify the system name for remote operations.
-  --compose=<compose_file>  Specify a Docker Compose file (default: docker-compose.yml).
-  --help                    Display this help message.
-
-Examples:
-  airlab docker-build
-  airlab docker-build --compose=docker-compose-orin.yml
-  airlab docker-build --system=robot1 --compose=docker-compose-orin.yml
+airlab launch <yaml_file> [--system=<target_system>] [--stop] [--help]
 ```
 
-### docker-join
+#### Options
+- `<yaml_file>`: launch file name (without .yaml)
+- `--system=<target_system>`: Launch on remote system
+- `--stop`: Stop tmux session
+- `--help`: Show help
 
-Attach to a running Docker container. You can specify the container name and target a remote system.
+#### Configuration Files
+- Launch files: `$AIRLAB_PATH/launch/<robot_name>.yaml`
+- Robot config: `$AIRLAB_PATH/robot/robot.conf`
+- Robot info: `$AIRLAB_PATH/robot/robot_info.yaml`
 
+#### Quick Examples
 ```bash
-Usage:
-  airlab docker-join [--system=<system_name>] [--name=<container_name>]
+# Local operations
+airlab launch mt001              # Launch locally
+airlab launch mt001 --stop       # Stop local session
 
-Options:
-  --system=<system_name>    Specify the system name for remote operations.
-  --name=<container_name>   Specify the container to join.
-  --help                    Display this help message.
-
-Examples:
-  airlab docker-join
-  airlab docker-join --name=testcontainer
-  airlab docker-join --system=robot1 --name=testcontainer
+# Remote operations
+airlab launch mt001 --system=mt002       # Launch on mt002
+airlab launch mt001 --system=mt002 --stop # Stop on mt002
 ```
 
-### docker-list
+#### Dependencies
+- tmuxp
+- ssh
+- python3 (with PyYAML)
+- sshpass (remote only)
 
-List active Docker containers. You can list running containers locally or on a remote system and optionally display images.
+#### Common Issues
+1. "YAML file not found": Check file exists in launch directory
+2. "System not found": Verify system name in robot.conf
+3. "Cannot connect": Check network and SSH credentials
+4. "Failed to get workspace": Verify robot_info.yaml entries
 
+Detailed Documentation is present [here](/usr/local/bin/docs/launch.md)
+
+---
+
+### Docker Commands
+
+#### docker-build
+Builds Docker images locally or remotely.
 ```bash
-Usage:
-  airlab docker-list [--system=<system_name>] [--images]
-
-Options:
-  --system=<system_name>    Specify the system name for remote operations.
-  --images                  List Docker images.
-  --help                    Display this help message.
-
-Examples:
-  airlab docker-list
-  airlab docker-list --images
-  airlab docker-list --system=robot1 --images
+airlab docker-build [--system=<system_name>] [--compose=<compose_file>]
+# Examples:
+airlab docker-build
+airlab docker-build --system=robot1 --compose=docker-compose-orin.yml
 ```
 
-### docker-up
-
-Start Docker containers using `docker-compose`. You can specify a custom Docker Compose file and target a remote system.
-
+#### docker-list
+Lists Docker containers or images.
 ```bash
-Usage:
-  airlab docker-up [--system=<system_name>] [--compose=<compose_file>]
-
-Options:
-  --system=<system_name>    Specify the system name for remote operations.
-  --compose=<compose_file>  Specify a Docker Compose file (default: docker-compose.yml).
-  --help                    Display this help message.
-
-Examples:
-  airlab docker-up
-  airlab docker-up --compose=docker-compose-orin.yml
-  airlab docker-up --system=robot1 --compose=docker-compose-orin.yml
+airlab docker-list [--system=<system_name>] [--images]
+# Examples:
+airlab docker-list
+airlab docker-list --system=robot1 --images
 ```
 
-## Dependencies
+#### docker-join
+Joins a running container with interactive shell.
+```bash
+airlab docker-join [--system=<system_name>] [--name=<container_name>]
+# Examples:
+airlab docker-join --name=testcontainer
+airlab docker-join --system=robot1 --name=testcontainer
+```
 
-`airlab` requires several tools to function correctly:
+#### docker-up
+Starts containers using Docker Compose.
+```bash
+airlab docker-up [--system=<system_name>] [--compose=<compose_file>]
+# Examples:
+airlab docker-up
+airlab docker-up --system=robot1 --compose=docker-compose-orin.yml
+```
 
-- **rsync**:            For file synchronization.
-- **ssh**, **ssh-askpass**:              For remote connections.
-- **sshpass**:          For non-interactive SSH authentication.
-- **tmux**:             For managing sessions.
-- **date**:             For time synchronization.
-- **docker**:           For docker operations.
-- **docker-compose-plugin**: For building docker files using docker compose
-- **python3** and **PyYAML**: For YAML configuration parsing.
+#### Common Notes
+- All commands support both local and remote operations
+- Remote operations require:
+  - Valid system name in robot.conf
+  - SSH credentials
+  - Proper configuration in robot_info.yaml
+- Required dependencies: docker, docker-compose, ssh, sshpass
 
-The dependencies on a Debian/Ubuntu system are installed uing the presinst sciprt but make sure you have `dpkg-deb` installed if you want to build the repo:
+Detailed Documentation is present [here](/usr/local/bin/docs/docker-commands.md)
+
+---
+
+### VCSTool Commands
+
+#### init
+Initialize local repositories based on a YAML configuration.
+
+**Usage:**
+```bash
+airlab vcstool init [OPTIONS]
+```
+
+**Options:**
+- `--repo_file=FILE`: YAML file (default: `repos.yaml`)
+- `--path=DIR`: Local directory (default: `ws/src/`)
+- `--help`: Display help
+
+**Features:**
+- Clones repositories to local workspace
+- Updates repository configuration in `/tmp/repo_config.txt`
+
+#### pull
+Pull changes from remote repositories to local workspace.
+
+**Usage:**
+```bash
+airlab vcstool pull [OPTIONS]
+```
+
+**Options:**
+- `--repo_file=FILE`: Repository config (defaults to base path)
+- `--no-rebase`: Disable rebasing
+- `--help`: Display help
+
+#### push
+Push local changes to remote repositories.
+
+**Usage:**
+```bash
+airlab vcstool push [OPTIONS]
+```
+
+**Options:**
+- `--repo_file=FILE`: Repository config (defaults to base path)
+- `--help`: Display help
+
+#### status
+Displays the status of local repositories.
+
+**Usage:**
+```bash
+airlab vcstool status [OPTIONS]
+```
+
+**Options:**
+- `--repo_file=FILE`: Repository config (defaults to base path)
+- `--help`: Display help
+
+#### Common Features
+- **Error Handling**: Colored error messages and validation before operations.
+- **Dependencies**: git, vcstool, bash
+- **Environment**: Requires `$AIRLAB_PATH` to be set.
+
+---
+## Workspace Structure Documentation
+
+### Overview
+
+This workspace is designed to streamline the integration and operation of robotics systems using ROS 2 and Docker. The workspace is structured into several key folders, each dedicated to specific tasks within the system. This organization ensures efficient management of configurations, dependencies, and runtime environments, enabling a smooth and scalable development process.
+
+### Directory Structure
+
+The workspace follows this hierarchical structure:
+
+```
+workspace/
+│
+├── docker/
+│   ├── sample.dockerfile            # Dockerfile to build the container
+│   ├── docker-compose.yml           # Compose file to manage multiple containers
+│
+├── launch/
+│   ├── sample.yaml                 # Launch file for starting nodes or systems
+│
+├── robot/
+│   ├── robot.conf                  # Configuration file for robot-specific settings
+│   ├── robot_info.yaml             # System-generated YAML file containing robot information
+│
+├── version_control/
+│   ├── repos.yaml                  # Sample repositories for version control using git
+│
+└── airlab.env                      # Environment file for airlab command settings
+```
+
+### Folder Breakdown
+
+#### 1. **docker/**
+
+This folder contains all Docker-related files, including the **Dockerfile** and **docker-compose.yml**, which are essential for setting up the containerized environment.
+
+- **sample.dockerfile**: The primary Dockerfile used to build the robot's container.
+- **docker-compose.yml**: A Docker Compose file for managing multi-container setups, which simplifies running and scaling multiple services or systems simultaneously.
+
+##### Usage:
+- Add additional Dockerfiles and compose files to this directory as needed. Ensure that any changes align with the standard structure and naming conventions.
+
+
+#### 2. **launch/**
+
+This folder holds all **launch** files in the [tmuxp format](https://github.com/tmux-python/tmuxp), a powerful tool for managing tmux sessions programmatically. Launch files specify the startup procedures for nodes or systems and are crucial for orchestrating the robot's operational flow.
+
+- **sample.yaml**: A sample launch file configured to use tmuxp format for managing multi-session tmux setups.
+
+##### Usage:
+- Add new launch files as needed, ensuring that they follow the tmuxp format to maintain consistency and compatibility.
+
+
+#### 3. **robot/**
+
+This folder contains the configuration files that define robot-specific settings and metadata. It is essential for ensuring that the robot's environment is properly configured and that the system can integrate various robots into the workspace.
+
+- **robot.conf**: A configuration file to define the IP addresses of remote systems. The format is simple:
+  ```
+  mt001=dtc@10.223.1.99
+  mt002=dtc@10.3.1.102
+  ```
+  Each line maps a robot identifier (e.g., `mt001`) to an IP address and a username.
+
+- **robot_info.yaml**: A dynamically generated YAML file that contains detailed information about the robots in the system, including metadata such as IP addresses, usernames, and robot models.
+  Example:
+  ```yaml
+  spot1:
+    ws_path: "/home/airlab/airlab_ws"
+    robot_ssh: "airlab@10.3.1.14"
+    last_updated: "2024-12-22 19:48:31"
+  ```
+
+#### Usage:
+- The **robot_info.yaml** file is automatically updated by the `airlab` command to reflect the latest robot configurations.
+- The **robot.conf** file must be manually updated to include the IP addresses of new robots as they are added to the system.
+
+
+Here's an enhanced version of the **version_control/** section:
+
+---
+
+#### 4. **version_control/**
+
+This folder is responsible for managing the version control configurations for the repositories used in the project. It utilizes [python-vcstool](https://github.com/dirk-thomas/vcstool) to streamline version management and facilitate easy integration of external repositories.
+
+- **repos.yaml**: This file lists all the repositories required for the project. The file follows the vcs format supported by vcstool. Each repository is defined by its type, URL, and the version/branch to be used.
+
+  Example format:
+  ```yaml
+  repositories:
+    vcstool:
+      type: git
+      url: git@github.com:dirk-thomas/vcstool.git
+      version: master
+  ```
+
+  In this example, `type` specifies the version control system (e.g., `git`), `url` provides the repository location, and `version` refers to the branch (e.g., `master`).
+
+##### Usage:
+- Regularly update the **repos.yaml** file to add new repositories, update existing ones, or change versions to ensure your workspace stays synchronized with the latest code and dependencies.
+- You can also add other yaml files to **version_control/** for specific purposes.
+
+#### 5. **airlab.env**
+
+The **airlab.env** file configures the environment variables and runtime settings specific to the `airlab` command. It is essential for ensuring that the necessary paths, configurations, and system parameters are set up correctly.
+
+##### Key points:
+- This file defines system paths, environment variables, and settings unique to the robot's workspace.
+- **airlab.env** is **system-specific** and **not synchronized** when you run the sync or setup commands. This means each system or robot may have a different configuration.
+
+##### Usage:
+- Make sure to configure this file correctly for each system to ensure that the `airlab` command functions as expected.
+
+**IMPORTANT NOTE**: You are welcome to rename or create new files as needed, but **please do not modify the folder structure**. Renaming or deleting folders like `docker/` or altering their names may cause the tool to malfunction and prevent it from working properly.
+
+
+## Future Work
+
+This was a weekend project through which I learned scripting. I would love new ideas that we can add here. It should probably be adding ROS2 functionality to the tool!
+
 
 ## Contributing
 
@@ -248,5 +474,4 @@ Contributions are welcome! Feel free to fork the repository, make changes, and s
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
----
 
