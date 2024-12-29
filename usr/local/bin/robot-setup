@@ -132,8 +132,21 @@ setup_local() {
             if [[ "$confirm" =~ ^[Yy]$ ]]; then
                 cleanup_local "$airlab_path"
             else
-                log_info "Setup cancelled by user"
-                exit 0
+                log_warn "Not overwriting existing installation"
+                log_info "Setting up environment..."
+                sed -i '/source .*airlab.env/d' $USER_HOME/.bashrc
+                setup_bashrc "$airlab_path"
+                log_info "✅ Local setup completed successfully"
+                cat << EOF
+Installation details:
+  - Path: $airlab_path
+  - System: local
+  - Environment: $airlab_path/airlab.env
+  
+Note: Run 'source ~/.bashrc' to apply changes
+EOF
+                log_info "Please add the ip address used by this system to /etc/hosts"
+                exit 1
             fi
         fi
     fi
@@ -290,6 +303,9 @@ setup_remote() {
         if [ "$force" = true ]; then
             log_warn "Force flag set. Overwriting existing installation..."
         else
+            log_warn "Directory exists. Existing installation will be removed."
+            log_warn "This will delete all files in the directory."
+            log_warn "Please ensure you have a backup of important files."
             read -p "Installation exists at $airlab_path. Overwrite? (y/N): " confirm
             [[ ! "$confirm" =~ ^[Yy]$ ]] && error_exit "Setup cancelled"
         fi
@@ -402,8 +418,8 @@ EOF
         sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "echo '$robot_password' | sudo -S reboot" 
     else
         log_info "Skipping"
+        log_info "Please reboot the system manually"
     fi
-
 }
 
 main() {

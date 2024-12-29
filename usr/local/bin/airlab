@@ -17,7 +17,9 @@ function show_usage() {
     echo "  docker-up                     Start Docker containers using docker-compose."
     echo "  docker-join                   Attach to a running Docker container."
     echo "  docker-list                   List active Docker containers."
-    echo "  vcstool                       Use basic git functions with multiple repositories."
+    echo "  vcstool                       Manage multiple repositories with common git functions."
+    echo "  --help                        Show this help message."
+    echo "  --version                     Show the version of the airlab command."
     echo "Run 'airlab <command>' for specific command usage."
 }
 
@@ -74,6 +76,15 @@ case "$COMMAND" in
     
     --help)
         show_usage
+        exit 0
+        ;;
+    --version)
+        VERSION=$(dpkg-query --show --showformat='${Version}' airlab 2>/dev/null)
+        if [ -z "$VERSION" ]; then
+            echo "Is the airlab package installed?"
+        else
+            echo "Airlab version v$VERSION"
+        fi
         exit 0
         ;;
     *)
