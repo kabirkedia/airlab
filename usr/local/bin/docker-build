@@ -95,13 +95,19 @@ except Exception as e:
 
 # Function to check if required commands exist
 check_dependencies() {
-    local deps=("docker" "docker compose" "ssh" "sshpass")
+    local deps=("docker" "ssh" "sshpass")
     for dep in "${deps[@]}"; do
         if ! command -v "$dep" >/dev/null 2>&1; then
             log_error "Required dependency '$dep' is not installed."
             exit 1
         fi
     done
+
+    # Check for 'docker compose'
+    if ! docker compose version >/dev/null 2>&1; then
+        log_error "Required dependency 'docker compose' is not installed or not functioning."
+        exit 1
+    fi
 }
 
 context_exists() {
@@ -111,7 +117,6 @@ context_exists() {
 # Main function
 main() {
     # Check dependencies first
-    check_dependencies
 
     local SYSTEM_NAME=""
     local COMPOSE_NAME="docker-compose.yml"
@@ -136,8 +141,6 @@ main() {
         esac
         shift
     done
-
-    COMPOSE_FILE="$AIRLAB_PATH/docker/$COMPOSE_NAME"
 
     if [[ -n "$SYSTEM_NAME" ]]; then
 
@@ -194,6 +197,9 @@ main() {
         fi
     else
         # Local operations
+        check_dependencies
+        source ~/.bashrc
+        COMPOSE_FILE="$AIRLAB_PATH/docker/$COMPOSE_NAME"
 
         # Check if the COMPOSE file exists locally before launching
         if [[ ! -f "$COMPOSE_FILE" ]]; then
