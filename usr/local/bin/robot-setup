@@ -157,31 +157,22 @@ EOF
     
     # Copy configuration files
     log_info "Copying initial configuration..."
-    if [ -d "/etc/airlab" ]; then
-        rsync -av --ignore-existing /etc/airlab/ "$airlab_path" || error_exit "Failed to copy initial configuration"
-    else
-        log_warn "No initial configuration found in /etc/airlab"
-        # Create basic structure
-        mkdir -p "$airlab_path/robot" || error_exit "Failed to create robot directory"
-        touch "$airlab_path/robot/robot.conf" || error_exit "Failed to create robot.conf"
-    fi
+    rsync -av --ignore-existing /etc/airlab/ "$airlab_path" || error_exit "Failed to copy initial configuration"
 
+    # Create initial environment file if it doesn't exist
+    cat > "$airlab_path/airlab.env" << EOF
+AIRLAB_PATH=$airlab_path
+AIRLAB_SYSTEM=local
+USER_NAME=$SUDO_USER
+USER=$SUDO_USER
+GROUP_NAME=$SUDO_USER
+GID=$SUDO_GID
+USER_ID=$SUDO_UID
+EOF
+    log_info "Created initial environment file"
     # Setup environment
     sed -i '/source .*airlab.env/d' $USER_HOME/.bashrc
     setup_bashrc "$airlab_path"
-        cat > $airlab_path/airlab.env << EOF
-AIRLAB_PATH=$airlab_path
-AIRLAB_SYSTEM=local
-EOF
-
-    # Create initial environment file if it doesn't exist
-    if [ ! -f "$airlab_path/airlab.env" ]; then
-        cat > "$airlab_path/airlab.env" << EOF
-AIRLAB_PATH=$airlab_path
-AIRLAB_SYSTEM=local
-EOF
-        log_info "Created initial environment file"
-    fi
 
     log_info "✅ Local setup completed successfully"
     cat << EOF
@@ -262,6 +253,21 @@ remote_copy() {
     local password="$3"
     
     sshpass -p "$password" scp "$src" "$dest" || error_exit "Failed to copy: $src to $dest"
+}
+
+read_remote_variable() {
+    local host="$1"
+    local password="$2"
+    local variable_name="$3"
+
+    # Use remote_exec to fetch the variable value
+    local variable_value
+    variable_value=$(remote_exec "$host" "echo \$$variable_name" "$password") || {
+        log_warn "Failed to fetch variable $variable_name from $host"
+    }
+
+    # Return the variable value as the function output
+    echo "$variable_value"
 }
 
 setup_remote() {
@@ -355,11 +361,21 @@ setup_remote() {
         fi
     fi
 
+    user_name=$(read_remote_variable "$robot_ssh_address" "$robot_password" "(id -un)")
+    group_name=$(read_remote_variable "$robot_ssh_address" "$robot_password" "(id -gn)")
+    group_id=$(read_remote_variable "$robot_ssh_address" "$robot_password" "(id -g)")
+    user_id=$(read_remote_variable "$robot_ssh_address" "$robot_password" "(id -u)")
+
     # Configure environment
     log_info "Configuring environment..."
     cat > /tmp/airlab.env << EOF
 AIRLAB_PATH=$airlab_path
 AIRLAB_SYSTEM=$robot_name
+USER_NAME=$user_name
+USER=$user_name
+GROUP_NAME=$group_name
+GID=$group_id
+USER_ID=$user_id
 EOF
     remote_copy "/tmp/airlab.env" "$robot_ssh_address:$airlab_path/airlab.env" "$robot_password"
     rm -f /tmp/airlab.env
@@ -368,7 +384,6 @@ EOF
     remote_exec "$robot_ssh_address" "sed -i '/source .*airlab.env/d' ~/.bashrc" "$robot_password"
     remote_exec "$robot_ssh_address" "grep -q 'source $airlab_path/airlab.env' ~/.bashrc || \
         echo 'set -o allexport; source $airlab_path/airlab.env; set +o allexport' >> ~/.bashrc" "$robot_password"
-    
 
     cat << EOF
 Installation details:
