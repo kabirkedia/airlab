@@ -95,7 +95,7 @@ except Exception as e:
 
 # Function to check if required commands exist
 check_dependencies() {
-    local deps=("docker" "docker-compose" "ssh" "sshpass")
+    local deps=("docker" "ssh" "sshpass")
     for dep in "${deps[@]}"; do
         if ! command -v "$dep" >/dev/null 2>&1; then
             log_error "Required dependency '$dep' is not installed."
