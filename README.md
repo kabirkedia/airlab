@@ -132,7 +132,36 @@ robot2=airlab@192.45.34.2
 Detailed Documentation is present [here](/usr/local/bin/docs/setup.md)
 
 ---
+### SSH
 
+#### Usage
+```bash
+airlab ssh <robot_name> [options]
+```
+
+#### Options
+- `--help`: Show help
+
+#### Configuration Files
+- Robot config: `$AIRLAB_PATH/robot/robot.conf`
+- Robot info: `$AIRLAB_PATH/robot/robot_info.yaml`
+
+#### Quick Examples
+```bash
+airlab ssh mt001                    # ssh into mt001 defined in robot.conf 
+```
+
+#### Dependencies
+- ssh
+- sshpass
+
+#### Common Issues
+1. "SSH connection failed": Check network/credentials
+2. "Workspace not found": Verify robot_info.yaml
+
+*Note: No detailed documentation present because it's not needed*
+
+---
 
 ### Sync
 
