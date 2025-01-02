@@ -18,6 +18,7 @@ function show_usage() {
     echo "  docker-join                   Attach to a running Docker container."
     echo "  docker-list                   List active Docker containers."
     echo "  vcstool                       Manage multiple repositories with common git functions."
+    echo "  ssh                           Connect to a remote machine using SSH."
     echo "  --help                        Show this help message."
     echo "  --version                     Show the version of the airlab command."
     echo "Run 'airlab <command>' for specific command usage."
@@ -73,7 +74,10 @@ case "$COMMAND" in
         # Join Dockerfiles in the right place
         /usr/local/bin/version-control/vcstool "$@"
         ;; 
-    
+    vcstool)
+        # Join Dockerfiles in the right place
+        /usr/local/bin/ssh "$@"
+        ;; 
     --help)
         show_usage
         exit 0
