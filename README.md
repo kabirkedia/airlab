@@ -311,20 +311,22 @@ Detailed Documentation is present [here](/usr/local/bin/docs/docker-commands.md)
 
 ---
 
-### VCSTool Commands
+### VCS Commands
 
 #### init
 Initialize local repositories based on a YAML configuration.
 
 **Usage:**
 ```bash
-airlab vcstool init [OPTIONS]
+airlab vcs init [OPTIONS]
 ```
 
 **Options:**
 - `--repo_file=FILE`: YAML file (default: `repos.yaml`)
-- `--path=DIR`: Local directory (default: `ws/src/`)
+- `--path=DIR`: Local directory (default: `ws/src/`). \
+If not specified, the directory from the YAML file is used.
 - `--help`: Display help
+- `--all` : Apply the operation to all YAML files in the version-control directory
 
 **Features:**
 - Clones repositories to local workspace
@@ -335,11 +337,10 @@ Pull changes from remote repositories to local workspace.
 
 **Usage:**
 ```bash
-airlab vcstool pull [OPTIONS]
+airlab vcs pull [OPTIONS]
 ```
 
 **Options:**
-- `--repo_file=FILE`: Repository config (defaults to base path)
 - `--no-rebase`: Disable rebasing
 - `--help`: Display help
 
@@ -348,11 +349,10 @@ Push local changes to remote repositories.
 
 **Usage:**
 ```bash
-airlab vcstool push [OPTIONS]
+airlab vcs push [OPTIONS]
 ```
 
 **Options:**
-- `--repo_file=FILE`: Repository config (defaults to base path)
 - `--help`: Display help
 
 #### status
@@ -360,12 +360,13 @@ Displays the status of local repositories.
 
 **Usage:**
 ```bash
-airlab vcstool status [OPTIONS]
+airlab vcs status [OPTIONS]
 ```
 
 **Options:**
 - `--repo_file=FILE`: Repository config (defaults to base path)
 - `--help`: Display help
+- `--show-branch`: Show the current branch of the repository
 
 #### Common Features
 - **Error Handling**: Colored error messages and validation before operations.
@@ -463,6 +464,7 @@ This folder is responsible for managing the version control configurations for t
 
   Example format:
   ```yaml
+  dir: src
   repositories:
     vcstool:
       type: git
@@ -471,6 +473,7 @@ This folder is responsible for managing the version control configurations for t
   ```
 
   In this example, `type` specifies the version control system (e.g., `git`), `url` provides the repository location, and `version` refers to the branch (e.g., `master`).
+  The path provided to the dir is relative to the workspace_path. 
 
 ##### Usage:
 - Regularly update the **repos.yaml** file to add new repositories, update existing ones, or change versions to ensure your workspace stays synchronized with the latest code and dependencies.

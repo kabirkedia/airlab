@@ -18,7 +18,7 @@ function show_usage() {
     echo "  --help  Show this help message"
     echo
     echo "For more information on a specific command, run:"
-    echo "  airlab vcstool <command> --help"
+    echo "  airlab vcs <command> --help"
 }
 
 

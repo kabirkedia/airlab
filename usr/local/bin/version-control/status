@@ -17,18 +17,17 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 # Function to print usage information
 show_usage() {
     cat << EOF
-Usage: airlab vcstool pull [OPTIONS]
+Usage: airlab vcs status [OPTIONS]
 
 Display the status of a repository specified in repos.yaml file.
 
 Options:
-  --repo_file=FILE    Specify the repository configuration file (default: repos.yaml)
-                      It will only get the status of those repos in that yaml file
   --help              Display this help message and exit
+  --show-branch       Show the current branch of the repository
 
 Examples:
-  airlab vcstool pull
-  airlab vcstool pull --repo_file=custom_repos.yaml
+  airlab vcs status
+  airlab vcs status --show-branch
 
 Note: This script uses the 'vcs' command to interact with the repository.
 EOF
@@ -38,12 +37,13 @@ main() {
 
     REPO_NAME=repos.yaml
     REBASE=true
+    SHORT=false
 
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --repo_file=*)
-                REPO_NAME="${1#--repo_file=}"
+            --show-branch)
+                SHORT=true
                 ;;
             --help)
                 show_usage
@@ -56,21 +56,12 @@ main() {
                 ;;
         esac
         shift
-    done
+    done 
 
-    source /tmp/repo_config.txt
-
-    # Extract the dynamic variable name
-    DYNAMIC_VAR="${REPO_NAME%%.*}"
-
-    if eval "[[ -n \${$DYNAMIC_VAR+x} ]]"; then
-        DIR_VALUE=$(eval "echo \$$DYNAMIC_VAR")
-        log_info "Found path at $DIR_VALUE"
-        vcs status $DIR_VALUE
+    if [[ "$SHORT" == true ]]; then
+        vcs custom --args status --short --branch 
     else
-        log_warn "$repo_name xxx ${REPO_NAME%%.*}"
-        log_warn "Could not find path for $REPO_NAME. Defaulting to ."
-        vcs status 
+        vcs status
     fi
 }
 

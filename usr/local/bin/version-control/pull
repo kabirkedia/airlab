@@ -17,20 +17,17 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 # Function to print usage information
 show_usage() {
     cat << EOF
-Usage: airlab vcstool pull [OPTIONS]
+Usage: airlab vcs pull [OPTIONS]
 
 Pull changes from repositories specified in repos.yaml file. The yaml file lives in $AIRLAB_PATH/version-control
 
 Options:
-  --repo_file=FILE    Specify the repository configuration file (default: repos.yaml). 
-                      It will only pull from repos specified in that yaml file
   --no-rebase         Perform a regular pull without rebasing
   --help              Display this help message and exit
 
 Examples:
-  airlab vcstool pull
-  airlab vcstool pull --repo_file=custom_repos.yaml
-  airlab vcstool pull --no-rebase
+  airlab vcs pull
+  airlab vcs pull --no-rebase
 
 Note: This script uses the 'vcs' command to interact with the repository.
 EOF
@@ -38,15 +35,11 @@ EOF
 
 
 main() {
-    REPO_NAME=repos.yaml
     REBASE=true
 
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --repo_file=*)
-                REPO_NAME="${1#--repo_file=}"
-                ;;
             --no-rebase)
                 REBASE=false
                 ;;
@@ -63,30 +56,10 @@ main() {
         shift
     done
 
-    source /tmp/repo_config.txt
-
-    # Extract the dynamic variable name
-    DYNAMIC_VAR="${REPO_NAME%%.*}"
-
     if [[ "$REBASE" == true ]]; then
-        if eval "[[ -n \${$DYNAMIC_VAR+x} ]]"; then
-            DIR_VALUE=$(eval "echo \$$DYNAMIC_VAR")
-            log_info "Found path at $DIR_VALUE"
-            vcs pull $DIR_VALUE
-        else
-            log_warn "$repo_name xxx ${REPO_NAME%%.*}"
-            log_warn "Could not find path for $REPO_NAME. Defaulting to ."
-            vcs pull 
-        fi
+        vcs pull 
     else
-        if eval "[[ -n \${$DYNAMIC_VAR+x} ]]"; then
-            DIR_VALUE=$(eval "echo \$$DYNAMIC_VAR")
-            log_info "Found path at $DIR_VALUE"
-            vcs custom --args pull --rebase $DIR_VALUE
-        else
-            log_warn "Could not find path for $REPO_NAME. Defaulting to ."
-            vcs custom --args pull --rebase $repo_path
-        fi
+        vcs custom --args pull --rebase $repo_path
     fi
 }
 

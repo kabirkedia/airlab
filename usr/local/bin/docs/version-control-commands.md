@@ -15,7 +15,7 @@ Clones and sets up repositories in your local workspace based on a YAML configur
 
 ### Usage
 ```bash
-airlab vcstool init [OPTIONS]
+airlab vcs init [OPTIONS]
 ```
 
 ### Options
@@ -43,18 +43,15 @@ Pulls changes from remote repositories to your local workspace.
 
 ### Usage
 ```bash
-airlab vcstool pull [OPTIONS]
+airlab vcs pull [OPTIONS]
 ```
 
 ### Options
-- `--repo_file=FILE`: Repository configuration file (defaults to base path)
-Base Path means it recursively searched for git repositories and performs operations on it!
 - `--no-rebase`: Perform pull without rebasing
 - `--help`: Display help message
 
 ### Features
 - Supports rebasing (default) or regular pulls
-- Uses repository paths from local configuration
 - Updates all repositories specified in the YAML file
 
 ## push
@@ -64,17 +61,14 @@ Pushes changes from your local workspace to remote repositories.
 
 ### Usage
 ```bash
-airlab vcstool push [OPTIONS]
+airlab vcs push [OPTIONS]
 ```
 
 ### Options
-- `--repo_file=FILE`: Repository configuration file (defaults to base path)
-Base Path means it recursively searched for git repositories and performs operations on it!
 - `--help`: Display help message
 
 ### Features
 - Pushes local changes to remote repositories specified in YAML file
-- Uses stored local repository paths
 - Provides colored output for status updates
 
 ## status
@@ -84,7 +78,7 @@ Displays the current status of local repositories.
 
 ### Usage
 ```bash
-airlab vcstool status [OPTIONS]
+airlab vcs status [OPTIONS]
 ```
 
 ### Options

@@ -17,7 +17,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 # Function to print usage information
 show_usage() {
     cat << EOF
-Usage: airlab vcstool push [OPTIONS]
+Usage: airlab vcs push [OPTIONS]
 
 Push changes from repositories specified in repos.yaml file. The yaml file lives in $AIRLAB_PATH/version-control
 
@@ -28,9 +28,8 @@ Options:
   --help              Display this help message and exit
 
 Examples:
-  airlab vcstool pull
-  airlab vcstool pull --repo_file=custom_repos.yaml
-  airlab vcstool pull --no-rebase
+  airlab vcs push
+  airlab vcs push --no-rebase
 
 Note: This script uses the 'vcs' command to interact with the repository.
 EOF
@@ -44,9 +43,6 @@ main() {
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --repo_file=*)
-                REPO_NAME="${1#--repo_file=}"
-                ;;
             --help)
                 show_usage
                 exit 0
@@ -60,19 +56,7 @@ main() {
         shift
     done
 
-    source /tmp/repo_config.txt
-
-    # Extract the dynamic variable name
-    DYNAMIC_VAR="${REPO_NAME%%.*}"
-
-    if eval "[[ -n \${$DYNAMIC_VAR+x} ]]"; then
-        DIR_VALUE=$(eval "echo \$$DYNAMIC_VAR")
-        log_info "Found path at $DIR_VALUE"
-        vcs push $DIR_VALUE
-    else
-        log_warn "Could not find path for $REPO_NAME. Defaulting to ."
-        vcs push 
-    fi
+    vcs push
 }
 
 # Run main function

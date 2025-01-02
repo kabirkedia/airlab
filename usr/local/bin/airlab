@@ -70,11 +70,11 @@ case "$COMMAND" in
         # Join Dockerfiles in the right place
         /usr/local/bin/docker-list "$@"
         ;; 
-    vcstool)
+    vcs)
         # Join Dockerfiles in the right place
         /usr/local/bin/version-control/vcstool "$@"
         ;; 
-    vcstool)
+    ssh)
         # Join Dockerfiles in the right place
         /usr/local/bin/ssh "$@"
         ;; 

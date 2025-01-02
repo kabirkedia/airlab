@@ -17,32 +17,33 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 # Function to print usage information
 show_usage() {
     cat << EOF
-Usage: airlab vcstool init [OPTIONS]
+Usage: airlab vcs init [OPTIONS]
 
-Clone and set up repositories based on a YAML configuration file. The yaml file lives in version-control
+Clone and set up repositories based on YAML configuration files. The YAML files live in version-control.
 
 Options:
-  --repo_file=FILE    Specify the YAML file containing repository information (default: repos.yaml)
-  --path=DIR          Specify the directory to clone repositories into (default: ws/src/). 
-                      The path is not absolute. It should be relative to you workspace path(or $AIRLAB_PATH in env)
-  --help              Display this help message and exit
+  --repo_file=FILE    Specify the YAML file containing repository information (default: repos.yaml).
+  --path=DIR          Specify the directory to clone repositories into. 
+                      If not specified, the directory from the YAML file is used.
+  --all               Apply the operation to all YAML files in the version-control directory.
+  --help              Display this help message and exit.
 
 Dependencies:
   - git
   - python3 with vcstool module
+  - python3 with PyYAML module
 
 Example:
-  airlab vcstool init --repo_file=custom_repos.yaml --path=custom/path/
+  airlab vcs init --repo_file=custom_repos.yaml --path=custom/path/
 
 Description:
-  This script clones and sets up repositories defined in a YAML file using vcstool.
+  This script clones and sets up repositories defined in YAML files using vcstool.
   It checks for required dependencies, creates the specified directory, copies the
   YAML file, and uses vcstool to clone and initialize the repositories.
 
 Note: This script uses the 'vcs' command to interact with the repository.
 EOF
 }
-
 
 check_dependencies() {
     local deps=("git")
@@ -53,11 +54,60 @@ check_dependencies() {
         fi
     done
 
-    # Check if python3 and vcstool are available
-    if ! python3 -c "import vcstool" 2>/dev/null; then
+    # Check if python3 and PyYAML are available
+    if ! python3 -c "import yaml" 2>/dev/null; then
         log_error "Python YAML module not found. Please install: pip3 install PyYAML"
-        return 1
+        exit 1
     fi
+}
+
+extract_yaml_dir() {
+    local yaml_file=$1
+
+    # Use Python to extract the "dir" field from the YAML file
+    python3 - <<EOF
+import yaml
+import sys
+
+with open("$yaml_file", 'r') as file:
+    data = yaml.safe_load(file)
+    print(data.get("dir", ""))
+EOF
+}
+
+process_repository() {
+    local repo_dir=$1
+    local yaml_file=$2
+
+    log_info "Processing repository with YAML file: $yaml_file"
+    mkdir -p "$repo_dir"
+
+    # Copy the YAML file to the target directory
+    cp "$yaml_file" "$repo_dir"
+
+    # Initialize the workspace
+    vcs import "$repo_dir" < "$repo_dir/$(basename "$yaml_file")"
+    cd "$repo_dir"
+    vcs custom --git --args submodule update --init --recursive
+
+    # Clean up the YAML file in the target directory
+    rm -f "$repo_dir/$(basename "$yaml_file")"
+}
+
+process_all_repositories() {
+    local yaml_dir=$1
+    local target_dir=$2
+
+    for yaml_file in "$yaml_dir"/*.yaml; do
+        [[ -e "$yaml_file" ]] || { log_warn "No YAML files found in $yaml_dir"; continue; }
+
+        # Extract directory from YAML file or use provided path
+        local yaml_dir_path
+        yaml_dir_path=$(extract_yaml_dir "$yaml_file")
+        local final_dir="${yaml_dir_path:-$target_dir}"
+
+        process_repository "$AIRLAB_PATH/$final_dir" "$yaml_file"
+    done
 }
 
 main() {
@@ -65,7 +115,8 @@ main() {
     check_dependencies
 
     REPO_NAME=repos.yaml
-    REPO_DIR=ws/src
+    REPO_DIR=""
+    ALL=false
 
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
@@ -76,7 +127,10 @@ main() {
             --path=*)
                 REPO_DIR="${1#--path=}"
                 ;;
-            --help=*)
+            --all)
+                ALL=true
+                ;;
+            --help)
                 show_usage
                 exit 0
                 ;;
@@ -89,39 +143,27 @@ main() {
         shift
     done
 
-    REPO_DIR=$REPO_DIR/${REPO_NAME%%.*}
+    local yaml_dir="$AIRLAB_PATH/version_control"
+    if [[ -z "$REPO_DIR" ]]; then
+        log_info "Using 'dir' from YAML files as the target directory."
+    else
+        log_info "Overriding YAML 'dir' with user-specified path: $REPO_DIR"
+    fi
 
-    # Create the src directory.
-    mkdir -p $AIRLAB_PATH/$REPO_DIR
+    if [[ "$ALL" == true ]]; then
+        log_info "Processing all repositories in YAML directory: $yaml_dir"
+        process_all_repositories "$yaml_dir" "$REPO_DIR"
+    else
+        local yaml_file="$yaml_dir/$REPO_NAME"
+        [[ -e "$yaml_file" ]] || { log_error "Specified YAML file not found: $yaml_file"; exit 1; }
 
-    # Copy the dtc_robot_repos.yaml file to the src directory.
-    cp $AIRLAB_PATH/version_control/$REPO_NAME $AIRLAB_PATH/$REPO_DIR
+        # Extract directory from YAML file or use provided path
+        local yaml_dir_path
+        yaml_dir_path=$(extract_yaml_dir "$yaml_file")
+        local final_dir="${REPO_DIR:-$yaml_dir_path}"
 
-    # Initialize the workspace.
-    vcs import $AIRLAB_PATH/$REPO_DIR < $AIRLAB_PATH/version_control/$REPO_NAME
-    cd $AIRLAB_PATH/$REPO_DIR
-    vcs custom --git --args submodule update --init --recursive
-    rm -f $AIRLAB_PATH/$REPO_DIR/$REPO_NAME
-
-    # Define the output file path
-    CONFIG_FILE="/tmp/repo_config.txt"
-
-    # Ensure the config file exists (create if missing)
-    touch "$CONFIG_FILE"
-
-    # Extract the dynamic variable name
-    DYNAMIC_VAR="${REPO_NAME%%.*}"
-
-    # Remove existing entries for the variable (if any)
-    sed -i "/^${DYNAMIC_VAR}=/d" "$CONFIG_FILE"
-
-    # Append the new REPO_NAME and REPO_DIR to the configuration file
-    {
-        echo "${DYNAMIC_VAR}=${AIRLAB_PATH}/${REPO_DIR}"
-    } >> "$CONFIG_FILE"
-
-    # Provide feedback to the user
-    log_info "Repository configuration updated in $CONFIG_FILE"
+        process_repository "$AIRLAB_PATH/$final_dir" "$yaml_file"
+    fi
 }
 
 # Run main function

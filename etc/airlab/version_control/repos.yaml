@@ -1,0 +1,10 @@
+dir: ws/src # Relative to the path where the workspace is located
+repositories:
+  vcstool:
+    type: git
+    url: git@github.com:dirk-thomas/vcstool.git
+    version: master
+  old_tools/rosinstall:
+    type: svn
+    url: https://github.com/vcstools/rosinstall/trunk
+    version: 748
