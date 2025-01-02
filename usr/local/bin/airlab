@@ -76,7 +76,7 @@ case "$COMMAND" in
         ;; 
     ssh)
         # Join Dockerfiles in the right place
-        /usr/local/bin/ssh "$@"
+        /usr/local/bin/version-control/ssh "$@"
         ;; 
     --help)
         show_usage
