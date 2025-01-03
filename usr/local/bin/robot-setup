@@ -112,79 +112,109 @@ cleanup_local() {
     log_info "Cleaning up existing installation..."
     rm -rf "$path" || error_exit "Failed to remove existing directory"
 }
-
-setup_local() {
+# Helper function to print completion message
+print_completion_message() {
     local airlab_path="$1"
-    local force="$2"
+    local system="$2"
+    log_info "✅ Local setup completed successfully"
 
-    home_dir=$(echo $HOME | sed 's/^HOME=//')
-    airlab_path=$(echo "$airlab_path" | sed "s|^~|$home_dir|")
-    
-    log_info "Setting up local environment at $airlab_path"
+    cat <<EOF
 
-    # Check if directory exists and handle overwrite
-    if [ -d "$airlab_path" ]; then
-        if [ "$force" = true ]; then
-            log_warn "Force flag set. Overwriting existing installation..."
-            cleanup_local "$airlab_path"
-        else
-            read -p "Directory $airlab_path already exists. Overwrite? (y/N): " confirm
-            if [[ "$confirm" =~ ^[Yy]$ ]]; then
-                cleanup_local "$airlab_path"
-            else
-                log_warn "Not overwriting existing installation"
-                log_info "Setting up environment..."
-                sed -i '/source .*airlab.env/d' $USER_HOME/.bashrc
-                setup_bashrc "$airlab_path"
-                log_info "✅ Local setup completed successfully"
-                cat << EOF
 Installation details:
   - Path: $airlab_path
-  - System: local
+  - System: $system
   - Environment: $airlab_path/airlab.env
-  
-Note: Run 'source ~/.bashrc' to apply changes
+
+Note: Run 'source ~/.bashrc' to apply changes.
 EOF
-                log_info "Please add the ip address used by this system to /etc/hosts"
-                exit 1
+
+    log_info "Reminder: Update /etc/hosts with this system's IP address."
+}
+
+setup_local() {
+    set -e  # Exit immediately if a command exits with a non-zero status
+
+    local airlab_path="$1"
+    local force="$2"
+    local home_dir="$HOME"
+
+    airlab_path="${airlab_path/#\~/$home_dir}"
+
+    log_info "Initializing local setup at: $airlab_path"
+
+    # Handle existing directory
+    if [ -d "$airlab_path" ]; then
+        if [ "$force" = true ]; then
+            log_warn "Force flag is set. Cleaning up existing installation..."
+            cleanup_local "$airlab_path"
+        else
+            log_warn "Directory $airlab_path already exists."
+            read -p "Overwrite existing directory? (y/N): " confirm
+            if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                log_info "Cleaning up existing installation..."
+                cleanup_local "$airlab_path"
+            else
+                log_info "Skipping overwrite. Updating environment setup..."
+                local env_file="$airlab_path/airlab.env"
+                if [ -f "$env_file" ]; then
+                    local current_user="${SUDO_USER:-$USER}"
+                    local current_uid="$(id -u "$current_user")"
+                    local current_gid="$(id -g "$current_user")"
+
+                    log_info "Updating environment file to reflect the current user and paths..."
+
+                    # Update variables in the environment file
+                    sed -i "s|^USER_NAME=.*|USER_NAME=$current_user|g" "$env_file"
+                    sed -i "s|^USER=.*|USER=$current_user|g" "$env_file"
+                    sed -i "s|^GROUP_NAME=.*|GROUP_NAME=$current_user|g" "$env_file"
+                    sed -i "s|^USER_ID=.*|USER_ID=$current_uid|g" "$env_file"
+                    sed -i "s|^GROUP_ID=.*|GROUP_ID=$current_gid|g" "$env_file"
+                    sed -i "s|^AIRLAB_PATH=.*|AIRLAB_PATH=$airlab_path|g" "$env_file"
+                    sed -i "s|^DOCKER_BUILD_PATH=.*|DOCKER_BUILD_PATH=$airlab_path/docker/docker-compose.yml|g" "$env_file"
+                    sed -i "s|^DOCKER_UP_PATH=.*|DOCKER_UP_PATH=$airlab_path/docker/docker-compose.yml|g" "$env_file"
+                    sed -i "s|^LAUNCH_FILE_PATH=.*|LAUNCH_FILE_PATH=$airlab_path/launch/sample.yaml|g" "$env_file"
+
+                    log_info "Environment file updated successfully."
+                else
+                    log_error "Environment file $env_file not found. Manual setup may be required."
+                fi
+                sed -i '/source .*airlab.env/d' "$HOME/.bashrc"
+                setup_bashrc "$airlab_path"
+                print_completion_message "$airlab_path" "local"
+                exit 0
             fi
         fi
     fi
 
-    # Create fresh installation
-    log_info "Creating directory structure..."
-    mkdir -p "$airlab_path" || error_exit "Failed to create directory"
-    
-    # Copy configuration files
-    log_info "Copying initial configuration..."
-    rsync -av --ignore-existing /etc/airlab/ "$airlab_path" || error_exit "Failed to copy initial configuration"
+    # Create and configure new installation
+    log_info "Setting up fresh installation at $airlab_path..."
+    mkdir -p "$airlab_path" || error_exit "Failed to create directory: $airlab_path"
 
-    # Create initial environment file if it doesn't exist
-    cat > "$airlab_path/airlab.env" << EOF
+    log_info "Copying default configuration..."
+    rsync -av --ignore-existing /etc/airlab/ "$airlab_path" || error_exit "Configuration copy failed"
+
+    log_info "Creating initial environment file..."
+    local docker_build=$airlab_path/docker/docker-compose.yml
+    local docker_up=$airlab_path/docker/docker-compose.yml
+    local launch_path=$airlab_path/launch/sample.yaml
+    log_info "Updating robot configuration..."
+
+    cat > "$airlab_path/airlab.env" <<EOF
 AIRLAB_PATH=$airlab_path
 AIRLAB_SYSTEM=local
-USER_NAME=$SUDO_USER
-USER=$SUDO_USER
-GROUP_NAME=$SUDO_USER
-GID=$SUDO_GID
-USER_ID=$SUDO_UID
+USER_NAME=${SUDO_USER:-$USER}
+USER=${SUDO_USER:-$USER}
+GROUP_NAME=${SUDO_USER:-$(id -gn)}
+GROUP_ID=${SUDO_GID:-$(id -g)}
+USER_ID=${SUDO_UID:-$(id -u)}
+DOCKER_BUILD_PATH=$docker_build
+DOCKER_UP_PATH=$docker_up
+LAUNCH_FILE_PATH=$launch_path
 EOF
-    log_info "Created initial environment file"
-    # Setup environment
-    sed -i '/source .*airlab.env/d' $USER_HOME/.bashrc
+    sed -i '/source .*airlab.env/d' "$HOME/.bashrc"
     setup_bashrc "$airlab_path"
 
-    log_info "✅ Local setup completed successfully"
-    cat << EOF
-
-Installation details:
-  - Path: $airlab_path
-  - System: local
-  - Environment: $airlab_path/airlab.env
-  
-Note: Run 'source ~/.bashrc' to apply changes
-EOF
-    log_info "Please add the ip address used by this system to /etc/hosts"
+    print_completion_message "$airlab_path" "local"
 }
 
 update_robot_info() {
@@ -192,6 +222,8 @@ update_robot_info() {
     local robot_name="$2"
     local field="$3"
     local value="$4"
+    local no_overwrite="$5"
+    local return_var="$6"
 
     ROBOT_INFO_FILE="$robot_info_file/robot/robot_info.yaml"
     
@@ -203,15 +235,28 @@ update_robot_info() {
     # Get current timestamp
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+
+    # Retrieve existing value from YAML, if any
+    local existing_value
+    existing_value=$(sed -n "/^  $robot_name:/,/^  [^[:space:]]/p" "$ROBOT_INFO_FILE" | grep "^    $field:" | sed "s/^    $field: \"\(.*\)\"/\1/")
+
+    if [ "$no_overwrite" = "--no-overwrite" ] && [ -n "$existing_value" ]; then
+        value="$existing_value"
+    fi
     
     # Check if robot already exists in YAML
     if grep -q "^  $robot_name:" "$ROBOT_INFO_FILE"; then
         # Check if field exists for this robot
         if grep -q "^    $field:" <(sed -n "/^  $robot_name:/,/^  [^[:space:]]/p" "$ROBOT_INFO_FILE"); then
             # Update existing field
-            sed -i "/^  $robot_name:/,/^  [^[:space:]]/ {
-                s|^    $field:.*|    $field: \"$value\"|
-            }" "$ROBOT_INFO_FILE"
+            if [ "$no_overwrite" = "--no-overwrite" ]; then
+                log_warn "Skipped updating $robot_name $field as --no-overwrite is set"
+            else
+                # Update existing field
+                sed -i "/^  $robot_name:/,/^  [^[:space:]]/ {
+                    s|^    $field:.*|    $field: \"$value\"|
+                }" "$ROBOT_INFO_FILE"
+            fi
         else
             # Add new field to existing robot
             sed -i "/^  $robot_name:/a\    $field: \"$value\"" "$ROBOT_INFO_FILE"
@@ -227,6 +272,11 @@ update_robot_info() {
     $field: "$value"
     last_updated: "$timestamp"
 EOF
+    fi
+
+    # Update the caller's variable
+    if [ -n "$return_var" ]; then
+        eval "$return_var=\"$value\""
     fi
     log_info "Updated robot $robot_name $field in $ROBOT_INFO_FILE"
 }
@@ -366,6 +416,24 @@ setup_remote() {
     group_id=$(read_remote_variable "$robot_ssh_address" "$robot_password" "(id -g)")
     user_id=$(read_remote_variable "$robot_ssh_address" "$robot_password" "(id -u)")
 
+    local docker_build=$airlab_path/docker/docker-compose.yml
+    local docker_up=$airlab_path/docker/docker-compose.yml
+    local launch_path=$airlab_path/launch/sample.yaml
+    log_info "Updating robot configuration..."
+    update_robot_info "$remote_path" "$robot_name" "robot_ssh" "$robot_ssh_address"
+    update_robot_info "$remote_path" "$robot_name" "ws_path" "$airlab_path"
+    update_robot_info "$remote_path" "$robot_name" "USER_NAME" "$user_name"
+    update_robot_info "$remote_path" "$robot_name" "GROUP_NAME" "$group_name"
+    update_robot_info "$remote_path" "$robot_name" "GROUP_ID" "$group_id"
+    update_robot_info "$remote_path" "$robot_name" "USER_ID" "$user_id"
+    update_robot_info "$remote_path" "$robot_name" "DOCKER_BUILD_PATH" "$docker_build" --no-overwrite docker_build
+    update_robot_info "$remote_path" "$robot_name" "DOCKER_UP_PATH" "$docker_up" --no-overwrite docker_up
+    update_robot_info "$remote_path" "$robot_name" "LAUNCH_FILE_PATH" "$launch_path" --no-overwrite launch_path
+
+    log_warn "Updating environment variables..."
+    log_warn $docker_build
+    log_warn $docker_up
+
     # Configure environment
     log_info "Configuring environment..."
     cat > /tmp/airlab.env << EOF
@@ -374,8 +442,11 @@ AIRLAB_SYSTEM=$robot_name
 USER_NAME=$user_name
 USER=$user_name
 GROUP_NAME=$group_name
-GID=$group_id
+GROUP_ID=$group_id
 USER_ID=$user_id
+DOCKER_BUILD_PATH=$docker_build
+DOCKER_UP_PATH=$docker_up
+LAUNCH_FILE_PATH=$launch_path
 EOF
     remote_copy "/tmp/airlab.env" "$robot_ssh_address:$airlab_path/airlab.env" "$robot_password"
     rm -f /tmp/airlab.env
@@ -393,8 +464,6 @@ Installation details:
   
 Note: Run 'source ~/.bashrc' on the remote system to apply changes
 EOF
-    update_robot_info "$remote_path" "$robot_name" "robot_ssh" "$robot_ssh_address"
-    update_robot_info "$remote_path" "$robot_name" "ws_path" "$airlab_path"
 
     log_info "Adding $robot_name to /etc/hosts file locally"
     ip_addr=$(echo $robot_ssh_address | sed 's/.*@//')

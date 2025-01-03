@@ -67,17 +67,21 @@ case "$COMMAND" in
         /usr/local/bin/docker-join "$@"
         ;; 
     docker-list)
-        # Join Dockerfiles in the right place
+        # List Docker containers in the right place
         /usr/local/bin/docker-list "$@"
         ;; 
     vcs)
-        # Join Dockerfiles in the right place
+        # Do git operations on multiple repositories
         /usr/local/bin/version-control/vcstool "$@"
         ;; 
     ssh)
-        # Join Dockerfiles in the right place
+        # ssh into a robot
         /usr/local/bin/version-control/ssh "$@"
         ;; 
+    set_env)
+        # Set environment variables
+        /usr/local/bin/set_env "$@"
+        ;;
     --help)
         show_usage
         exit 0

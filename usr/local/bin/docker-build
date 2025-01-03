@@ -119,7 +119,7 @@ main() {
     # Check dependencies first
 
     local SYSTEM_NAME=""
-    local COMPOSE_NAME="docker-compose.yml"
+    local COMPOSE_NAME=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --system=*)
@@ -175,23 +175,37 @@ main() {
             log_error "Robot info file not found at '$ROBOT_INFO_PATH'"
             exit 1
         fi
-        # Parse the workspace path and handle errors
-        LAUNCH_DIR=$(parse_yaml "$ROBOT_INFO_PATH" "$SYSTEM_NAME.ws_path") || {
-            log_error "Failed to get workspace path from robot_info.yaml"
-            exit 1
-        }
-        
-        if [[ -z "$LAUNCH_DIR" ]]; then
-            log_error "Workspace path is empty in robot_info.yaml"
-            exit 1
+
+        local docker_build_path=""
+
+        if [[ -z "$COMPOSE_NAME" ]]; then
+            # Parse the workspace path and handle errors
+            LAUNCH_DIR=$(parse_yaml "$ROBOT_INFO_PATH" "$SYSTEM_NAME.ws_path") || {
+                log_error "Failed to get workspace path from robot_info.yaml"
+                exit 1
+            }
+            if [[ -z "$LAUNCH_DIR" ]]; then
+                log_error "Workspace path is empty in robot_info.yaml"
+                exit 1
+            fi  
+            docker_build_path="$LAUNCH_DIR/docker/docker-compose.yml"    
+        else
+            docker_build_path=$(parse_yaml "$ROBOT_INFO_PATH" "$SYSTEM_NAME.DOCKER_BUILD_PATH") || {
+                log_error "Failed to get docker-up path from robot_info.yaml"
+                exit 1
+            }
+            if [[ -z "$docker_build_path" ]]; then
+                log_error "Docker-build path is empty in robot_info.yaml"
+                exit 1
+            fi
         fi
         
-        log_info "Building Docker file at $LAUNCH_DIR/docker/$COMPOSE_NAME"
+        log_info "Building Docker file at $docker_build_path"
 
         sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "source ~/.bashrc"
         
         # Launch on remote system with error handling
-        if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "docker compose -f "$LAUNCH_DIR/docker/$COMPOSE_NAME" build"; then
+        if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "docker compose -f "$docker_build_path" build"; then
             log_error "Failed to build image on remote system"
             exit 1
         fi
@@ -199,7 +213,11 @@ main() {
         # Local operations
         check_dependencies
         source ~/.bashrc
-        COMPOSE_FILE="$AIRLAB_PATH/docker/$COMPOSE_NAME"
+        if [[ -n "$COMPOSE_NAME" ]]; then
+            COMPOSE_FILE="$AIRLAB_PATH/docker/$COMPOSE_NAME"
+        else
+            COMPOSE_FILE="$DOCKER_BUILD_PATH"
+        fi
 
         # Check if the COMPOSE file exists locally before launching
         if [[ ! -f "$COMPOSE_FILE" ]]; then
