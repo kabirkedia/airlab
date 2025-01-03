@@ -127,6 +127,7 @@ EOF
 set_env_local() {
     set -e  # Exit immediately if a command exits with a non-zero status
 
+    source ~/.bashrc
     local input="$1"
     local ENV_FILE="$AIRLAB_PATH/airlab.env"
     log_info "Found Value $ENV_FILE. Processing"
@@ -157,11 +158,6 @@ set_env_local() {
         echo "$ENV_VARIABLE=$ENV_VALUE" >> "$ENV_FILE"
         log_info "Added $ENV_VARIABLE to $ENV_FILE"
     fi
-}
-
-set_env_remote() {
-
-echo "TBD"
 }
 
 set_env_remote() {
@@ -209,8 +205,8 @@ set_env_remote() {
     }
 
     # Operate this script on the remote system
-    if sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "dpkg -l | grep -q '^ii.*airlab'" ; then
-        if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "airlab setup local "$ENV_VARIABLE""; then
+    if sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$ROBOT_SSH_ADDRESS" "dpkg -l | grep -q '^ii.*airlab'" ; then
+        if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "source $LAUNCH_DIR/airlab.env && airlab set_env local "$ENV_VARIABLE""; then
             log_error "Failed to change value on remote system"
             exit 1
         fi
@@ -253,7 +249,7 @@ main() {
             show_usage
             ;;
         *)
-            setup_env_remote "$ROBOT_NAME" "$ENV_VARIABLE"
+            set_env_remote "$ROBOT_NAME" "$ENV_VARIABLE"
             ;;
     esac
 
