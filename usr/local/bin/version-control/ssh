@@ -26,8 +26,8 @@ show_usage() {
     echo "  --help                    Show this help message"
     echo
     echo -e "${YELLOW}Examples:${NC}"
-    echo "  airlab ssh mt001                          # Sync files to mt001"
-}
+    echo "  airlab ssh mt001                          # ssh into the robot"
+} 
 
 
 
