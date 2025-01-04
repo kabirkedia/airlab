@@ -19,6 +19,8 @@ function show_usage() {
     echo "  docker-list                   List active Docker containers."
     echo "  vcstool                       Manage multiple repositories with common git functions."
     echo "  ssh                           Connect to a remote machine using SSH."
+    echo "  set_env                       Set environment variables on local or remote machine."
+    echo "  set_hosts                     Set hostnames for robots or local environment."
     echo "  --help                        Show this help message."
     echo "  --version                     Show the version of the airlab command."
     echo "Run 'airlab <command>' for specific command usage."
@@ -44,43 +46,47 @@ case "$COMMAND" in
         ;;
     launch)
         # Call the airlab-launch script with additional arguments
-        /usr/local/bin/robot-launch "$@"
+        /usr/local/bin/cmds/robot-launch "$@"
         ;;
     setup)
         # Call the airlab-setup script
-        /usr/local/bin/robot-setup "$@"
+        /usr/local/bin/cmds/robot-setup "$@"
         ;;
     sync)
         # Call the airlab-setup script
-        /usr/local/bin/robot-sync "$@"
+        /usr/local/bin/cmds/robot-sync "$@"
         ;;
     docker-build)
         # Build Dockerfiles in the right place
-        /usr/local/bin/docker-build "$@"
+        /usr/local/bin/cmds/docker-build "$@"
         ;;
     docker-up)
         # Start Dockerfiles in the right place
-        /usr/local/bin/docker-up "$@"
+        /usr/local/bin/cmds/docker-up "$@"
         ;;
     docker-join)
         # Join Dockerfiles in the right place
-        /usr/local/bin/docker-join "$@"
+        /usr/local/bin/cmds/docker-join "$@"
         ;; 
     docker-list)
         # List Docker containers in the right place
-        /usr/local/bin/docker-list "$@"
+        /usr/local/bin/cmds/docker-list "$@"
         ;; 
     vcs)
         # Do git operations on multiple repositories
-        /usr/local/bin/version-control/vcstool "$@"
+        /usr/local/bin/cmds/version-control/vcstool "$@"
         ;; 
     ssh)
         # ssh into a robot
-        /usr/local/bin/version-control/ssh "$@"
+        /usr/local/bin/cmds/ssh "$@"
         ;; 
     set_env)
         # Set environment variables
-        /usr/local/bin/set_env "$@"
+        /usr/local/bin/cmds/set_env "$@"
+        ;;
+    set_hosts)
+        # Set hosts file
+        /usr/local/bin/cmds/set_hosts "$@"
         ;;
     --help)
         show_usage

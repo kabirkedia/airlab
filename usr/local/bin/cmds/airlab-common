@@ -1,0 +1,59 @@
+#!/bin/bash
+
+
+# Function to parse the robot.conf file and return the formatted output
+parse_robot_conf() {
+    local file="$1"
+    local result=""
+    
+    # Loop through each line in the file
+    while IFS='=' read -r key value; do
+        # Skip empty lines or lines without '='
+        if [[ -z "$key" || -z "$value" ]]; then
+            continue
+        fi
+
+        # Extract the IP address
+        ip_address=$(echo "$value" | cut -d'@' -f2)
+
+        # Append the formatted line to the result
+        result+=$(printf "%-15s %-10s #Remote system:%s\n" "$ip_address" "$key" "$key")
+        result+="\n"
+    done < "$file"
+    
+    echo -e "$result"
+}
+
+# Function to update or add markers and content
+update_file() {
+  local file_path="$1"
+  local start_marker="$2"
+  local end_marker="$3"
+  local new_content="$4"
+
+  # Check if the file exists
+  if [[ ! -f "$file_path" ]]; then
+    echo "Error: File '$file_path' does not exist."
+    return 1
+  fi
+
+  # Check if start and end markers are present
+  if grep -q "$start_marker" "$file_path" && grep -q "$end_marker" "$file_path"; then
+    # Replace content between markers
+    awk -v start_marker="$start_marker" -v end_marker="$end_marker" -v new_content="$new_content" '
+      $0 == start_marker {print; in_block = 1; next}
+      $0 == end_marker {print new_content; print; in_block = 0; next}
+      !in_block
+    ' "$file_path" > "${file_path}.tmp" && mv "${file_path}.tmp" "$file_path"
+  else
+    # Add markers and content to the end of the file
+    {
+      echo
+      echo "$start_marker"
+      echo "$new_content"
+      echo "$end_marker"
+    } >> "$file_path"
+  fi
+
+  echo "File updated successfully."
+}

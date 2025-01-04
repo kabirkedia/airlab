@@ -163,6 +163,39 @@ airlab ssh mt001                    # ssh into mt001 defined in robot.conf
 
 ---
 
+### Environment Commands
+#### set_env
+Sets environment variables for local or remote robot environments.
+##### Usage
+```bash
+airlab set_env [ROBOT_NAME] [ENV_VARIABLE]
+```
+##### Arguments
+- `ROBOT_NAME`: Target system ('local' for local environment)
+- `ENV_VARIABLE`: Environment variable and value to set
+
+##### Options
+- `--help`: Display help
+- `-h`: Display help
+
+##### Examples
+```bash
+# Set local environment variable
+airlab set_env local MY_VAR="hello"
+
+# Set remote robot environment
+airlab set_env robot1 MY_VAR="hello"
+```
+
+##### Features
+
+- If running locally just updates local airlab.env file
+- If running remotely updates airlab.env file on remote system and also updates the configuration in robot_info.yaml.
+
+*Note: No detailed documentation present because it's not needed*
+
+---
+
 ### Sync
 
 #### Usage
