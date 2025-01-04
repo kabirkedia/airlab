@@ -42,6 +42,7 @@ Description:
   YAML file, and uses vcstool to clone and initialize the repositories.
 
 Note: This script uses the 'vcs' command to interact with the repository.
+Note: --all flag cannot be used with --repo_file or --path flags.
 EOF
 }
 

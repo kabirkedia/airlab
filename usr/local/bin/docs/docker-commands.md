@@ -20,14 +20,15 @@ airlab docker-build [--system=<system_name>] [--compose=<compose_file>]
 
 ### Options
 - `--system=<system_name>`: (Optional) Specifies the target system name for remote operations
-- `--compose=<compose_file>`: (Optional) Specifies the Docker Compose file (defaults to docker-compose.yml). \
-**Path should be relative to $AIRLAB_PATH/docker.**
+- `--compose=<compose_file>`: (Optional) Specifies the Docker Compose file (defaults to $DOCKER_BUILD_PATH). \
+**Path should be relative to $AIRLAB_PATH.**
 - `--help`: Displays help information
 
 ### Examples
 ```bash
 airlab docker-build
 airlab docker-build --compose=docker-compose-orin.yml
+airlab docker-build --system=robot1
 airlab docker-build --system=robot1 --compose=docker-compose-orin.yml
 ```
 
@@ -106,7 +107,7 @@ airlab docker-up [--system=<system_name>] [--compose=<compose_file>]
 
 ### Options
 - `--system=<system_name>`: (Optional) Specifies the target system for remote operations
-- `--compose=<compose_file>`: (Optional) Specifies the Docker Compose file (defaults to docker-compose.yml)
+- `--compose=<compose_file>`: (Optional) Specifies the Docker Compose file (defaults to $DOCKER_UP_PATH)
 - `--help`: Displays help information
 
 ### Examples
@@ -114,7 +115,7 @@ airlab docker-up [--system=<system_name>] [--compose=<compose_file>]
 airlab docker-up
 airlab docker-up --compose=docker-compose-orin.yml
 airlab docker-up --system=robot1 --compose=docker-compose-orin.yml
-**Path should be relative to $AIRLAB_PATH/docker.**
+**Path should be relative to $AIRLAB_PATH.**
 ```
 
 ### Features
@@ -141,6 +142,7 @@ All commands require the following dependencies:
 Commands that interact with remote systems require:
 - `robot.conf`: Contains system SSH addresses
 - `robot_info.yaml`: Contains workspace path information
+- `airlab.env`: Contains enviornment variable DOCKER_BUILD_PATH and DOCKER_UP_PATH
 
 ### Security
 - Secure password handling for remote operations

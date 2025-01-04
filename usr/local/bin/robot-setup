@@ -202,6 +202,7 @@ setup_local() {
     cat > "$airlab_path/airlab.env" <<EOF
 AIRLAB_PATH=$airlab_path
 AIRLAB_SYSTEM=local
+ROBOT_NAME=local
 USER_NAME=${SUDO_USER:-$USER}
 USER=${SUDO_USER:-$USER}
 GROUP_NAME=${SUDO_USER:-$(id -gn)}
@@ -422,6 +423,8 @@ setup_remote() {
     log_info "Updating robot configuration..."
     update_robot_info "$remote_path" "$robot_name" "robot_ssh" "$robot_ssh_address"
     update_robot_info "$remote_path" "$robot_name" "ws_path" "$airlab_path"
+    update_robot_info "$remote_path" "$robot_name" "ROBOT_NAME" "$robot_name"
+    update_robot_info "$remote_path" "$robot_name" "AIRLAB_SYSTEM" "$robot_name"
     update_robot_info "$remote_path" "$robot_name" "USER_NAME" "$user_name"
     update_robot_info "$remote_path" "$robot_name" "GROUP_NAME" "$group_name"
     update_robot_info "$remote_path" "$robot_name" "GROUP_ID" "$group_id"
@@ -439,6 +442,7 @@ setup_remote() {
     cat > /tmp/airlab.env << EOF
 AIRLAB_PATH=$airlab_path
 AIRLAB_SYSTEM=$robot_name
+ROBOT_NAME=$robot_name
 USER_NAME=$user_name
 USER=$user_name
 GROUP_NAME=$group_name

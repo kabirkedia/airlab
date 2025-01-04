@@ -19,7 +19,7 @@ show_usage() {
     echo
     echo -e "${YELLOW}Options:${NC}"
     echo "  --system=<system_name>    Specify the system name for remote operations."
-    echo "  --compose=<compose_file>  Specify a Docker Compose file (default: docker-compose.yml)."
+    echo "  --compose=<compose_file>  Specify a Docker Compose file (default: set by ENV VARIABLE: DOCKER_UP_PATH)."
     echo "  --help                    Display this help message."
     echo
     echo -e "${YELLOW}Examples:${NC}"
@@ -144,6 +144,9 @@ main() {
     done
 
     if [[ -n "$SYSTEM_NAME" ]]; then
+        # Remote operations
+
+        source ~/.bashrc
 
         ROBOT_CONF="$AIRLAB_PATH/robot/robot.conf"
         if [[ ! -f "$ROBOT_CONF" ]]; then
@@ -189,7 +192,7 @@ main() {
                 log_error "Workspace path is empty in robot_info.yaml"
                 exit 1
             fi  
-            docker_up_path="$LAUNCH_DIR/docker/docker-compose.yml"    
+            docker_up_path="$LAUNCH_DIR/$COMPOSE_NAME"    
         else
             # Parse the workspace path and handle errors
             docker_up_path=$(parse_yaml "$ROBOT_INFO_PATH" "$SYSTEM_NAME.DOCKER_UP_PATH") || {
@@ -204,8 +207,14 @@ main() {
         
         log_info "Starting Docker Compose File at $docker_up_path"
 
+        #setup remote ws path
+        remote_airlab_path=$(parse_yaml "$ROBOT_INFO_PATH" "$SYSTEM_NAME.ws_path") || {
+            log_error "Failed to get workspace path from robot_info.yaml"
+            exit 1
+        }
+
         # Launch on remote system with error handling
-        if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "source ~/.bashrc && docker compose -f "$docker_up_path" up"; then
+        if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "export AIRLAB_PATH='$remote_airlab_path' && docker compose -f "$docker_up_path" up"; then
             log_error "Failed to build image on remote system"
             exit 1
         fi
@@ -215,7 +224,7 @@ main() {
         source ~/.bashrc
         local COMPOSE_FILE=""
         if [[ -n "$COMPOSE_NAME" ]]; then
-            COMPOSE_FILE="$AIRLAB_PATH/docker/$COMPOSE_NAME"
+            COMPOSE_FILE="$AIRLAB_PATH/$COMPOSE_NAME"
         else
             COMPOSE_FILE="$DOCKER_UP_PATH"
         fi

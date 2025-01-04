@@ -220,29 +220,29 @@ Detailed Documentation is present [here](/usr/local/bin/docs/sync.md)
 
 #### Usage
 ```bash
-airlab launch <yaml_file> [--system=<target_system>] [--stop] [--help]
+airlab launch <robot_name> [options]
 ```
 
 #### Options
-- `<yaml_file>`: launch file name (without .yaml)
-- `--system=<target_system>`: Launch on remote system
+- `<robot_name>`: Name of the robot (must be defined in robot.conf)
+- `--yaml_file=<file_name>`: Alternative launch file (relative to workspace)
 - `--stop`: Stop tmux session
 - `--help`: Show help
 
 #### Configuration Files
-- Launch files: `$AIRLAB_PATH/launch/<robot_name>.yaml`
+- Launch files: Set by LAUNCH_FILE_PATH environment variable
 - Robot config: `$AIRLAB_PATH/robot/robot.conf`
 - Robot info: `$AIRLAB_PATH/robot/robot_info.yaml`
 
 #### Quick Examples
 ```bash
 # Local operations
-airlab launch mt001              # Launch locally
-airlab launch mt001 --stop       # Stop local session
-
+airlab launch local                      # Launch locally
+airlab launch local --stop               # Stop local session
 # Remote operations
-airlab launch mt001 --system=mt002       # Launch on mt002
-airlab launch mt001 --system=mt002 --stop # Stop on mt002
+airlab launch mt001                      # Launch on mt001
+airlab launch mt001 --stop               # Stop on mt001
+airlab launch mt001 --yaml_file=mt002.yaml        # Launch specific yaml
 ```
 
 #### Dependencies
@@ -252,61 +252,66 @@ airlab launch mt001 --system=mt002 --stop # Stop on mt002
 - sshpass (remote only)
 
 #### Common Issues
-1. "YAML file not found": Check file exists in launch directory
-2. "System not found": Verify system name in robot.conf
+1. "YAML file not found": Check LAUNCH_FILE_PATH environment variable
+2. "System not found": Verify robot name in robot.conf
 3. "Cannot connect": Check network and SSH credentials
 4. "Failed to get workspace": Verify robot_info.yaml entries
+
+Note: Use 'local' as robot name for local operations. YAML file path should be relative to robot's workspace.
 
 Detailed Documentation is present [here](/usr/local/bin/docs/launch.md)
 
 ---
-
 ### Docker Commands
-
 #### docker-build
 Builds Docker images locally or remotely.
+##### Usage
 ```bash
-airlab docker-build [--system=<system_name>] [--compose=<compose_file>]
-# Examples:
-airlab docker-build
-airlab docker-build --system=robot1 --compose=docker-compose-orin.yml
+airlab docker-build [OPTIONS]
 ```
+##### Options
+- `--system=<system_name>`: Target system for remote operations
+- `--compose=<compose_file>`: Docker Compose file (relative to robot workspace. Defaults to $DOCKER_BUILD_PATH)
+- `--help`: Display help
 
 #### docker-list
 Lists Docker containers or images.
+##### Usage
 ```bash
-airlab docker-list [--system=<system_name>] [--images]
-# Examples:
-airlab docker-list
-airlab docker-list --system=robot1 --images
+airlab docker-list [OPTIONS]
 ```
+##### Options
+- `--system=<system_name>`: Target system for remote operations
+- `--images`: List images instead of containers
+- `--help`: Display help
 
 #### docker-join
 Joins a running container with interactive shell.
+##### Usage
 ```bash
-airlab docker-join [--system=<system_name>] [--name=<container_name>]
-# Examples:
-airlab docker-join --name=testcontainer
-airlab docker-join --system=robot1 --name=testcontainer
+airlab docker-join [OPTIONS]
 ```
+##### Options
+- `--system=<system_name>`: Target system for remote operations
+- `--name=<container_name>`: Container to join
+- `--help`: Display help
 
 #### docker-up
 Starts containers using Docker Compose.
+##### Usage
 ```bash
-airlab docker-up [--system=<system_name>] [--compose=<compose_file>]
-# Examples:
-airlab docker-up
-airlab docker-up --system=robot1 --compose=docker-compose-orin.yml
+airlab docker-up [OPTIONS]
 ```
+##### Options
+- `--system=<system_name>`: Target system for remote operations
+- `--compose=<compose_file>`: Docker Compose file (relative to robot workspace. Defaults to $DOCKER_UP_PATH)
+- `--help`: Display help
 
-#### Common Notes
-- All commands support both local and remote operations
-- Remote operations require:
-  - Valid system name in robot.conf
-  - SSH credentials
-  - Proper configuration in robot_info.yaml
-- Required dependencies: docker, docker-compose, ssh, sshpass
-
+#### Common Features
+- **Remote Operations**: Requires valid system in `robot.conf`, SSH credentials, and proper configuration in `robot_info.yaml`
+- **Error Handling**: Colored error messages and validation before operations
+- **Dependencies**: docker, docker-compose, ssh, sshpass
+- **Environment**: Requires `$DOCKER_BUILD_PATH` and `$DOCKER_UP_PATH` to be set
 Detailed Documentation is present [here](/usr/local/bin/docs/docker-commands.md)
 
 ---
@@ -316,55 +321,50 @@ Detailed Documentation is present [here](/usr/local/bin/docs/docker-commands.md)
 #### init
 Initialize local repositories based on a YAML configuration.
 
-**Usage:**
+##### Usage
 ```bash
 airlab vcs init [OPTIONS]
 ```
 
-**Options:**
+##### Options
 - `--repo_file=FILE`: YAML file (default: `repos.yaml`)
-- `--path=DIR`: Local directory (default: `ws/src/`). \
+- `--path=DIR`: Local directory. \
 If not specified, the directory from the YAML file is used.
 - `--help`: Display help
 - `--all` : Apply the operation to all YAML files in the version-control directory
 
-**Features:**
-- Clones repositories to local workspace
-- Updates repository configuration in `/tmp/repo_config.txt`
-
 #### pull
 Pull changes from remote repositories to local workspace.
 
-**Usage:**
+##### Usage
 ```bash
 airlab vcs pull [OPTIONS]
 ```
 
-**Options:**
+##### Options
 - `--no-rebase`: Disable rebasing
 - `--help`: Display help
 
 #### push
 Push local changes to remote repositories.
 
-**Usage:**
+##### Usage
 ```bash
 airlab vcs push [OPTIONS]
 ```
 
-**Options:**
+##### Options
 - `--help`: Display help
 
 #### status
 Displays the status of local repositories.
 
-**Usage:**
+##### Usage
 ```bash
 airlab vcs status [OPTIONS]
 ```
 
-**Options:**
-- `--repo_file=FILE`: Repository config (defaults to base path)
+##### Options
 - `--help`: Display help
 - `--show-branch`: Show the current branch of the repository
 
@@ -372,6 +372,8 @@ airlab vcs status [OPTIONS]
 - **Error Handling**: Colored error messages and validation before operations.
 - **Dependencies**: git, vcstool, bash
 - **Environment**: Requires `$AIRLAB_PATH` to be set.
+
+Detailed Documentation is present [here](/usr/local/bin/docs/version-control-commands.md)
 
 ---
 ## Workspace Structure Documentation

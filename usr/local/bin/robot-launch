@@ -17,23 +17,26 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 # Function to print usage information
 show_usage() {
     echo -e "${YELLOW}Usage:${NC}"
-    echo "  airlab launch <yaml_file> [options]"
+    echo "  airlab launch <robot_name> [options]"
     echo
     echo -e "${YELLOW}Arguments:${NC}"
-    echo "  <robot_name>              Name of the robot/launch file (without .yaml extension)"
+    echo "  <robot_name>              Name of the robot to launch(must be defined in robot.conf)."
     echo
     echo -e "${YELLOW}Options:${NC}"
-    echo "  --system=<target_system>  Launch on a remote system defined in robot.conf"
+    echo "  --yaml_file=<file_name>   Yaml Launch file. Defaults to LAUNCH_FILE_PATH which points to the launch file in the robot's workspace."
+    echo "  You can change the default launch file path by setting the LAUNCH_FILE_PATH environment variable using airlab set_env command."
     echo "  --stop                    Stop the tmux session instead of starting it"
     echo "  --help                    Show this help message"
     echo
     echo -e "${YELLOW}Examples:${NC}"
-    echo "  airlab launch mt001                       # Launch mt001.yaml locally"
-    echo "  airlab launch mt001 --stop               # Stop local mt001 tmux session"
-    echo "  airlab launch mt001 --system=mt002       # Launch mt001.yaml on mt002"
-    echo "  airlab launch mt001 --system=mt002 --stop # Stop mt001 tmux session on mt002"
+    echo "  airlab launch local                      # Launch yaml file set by env var LAUNCH_FILE_PATH locally"
+    echo "  airlab launch mt001                      # Launch yaml file set by env var LAUNCH_FILE_PATH on remote system mt001"
+    echo "  airlab launch mt001 --stop               # Stop tmux session named by the env var LAUNCH_FILE_PATH on remote system mt001"
+    echo "  airlab launch mt001 --yaml_file=mt002.yaml        # Launch mt002.yaml on remote system mt002"
+    echo "  airlab launch mt001 --yaml_file=mt002.yaml --stop # Stop mt002.yaml tmux session on remote system mt002"
+    echo "NOTE: Use 'local' as the robot name to launch locally."
+    echo "NOTE: the yaml_file path should be relative to the robot's workspace."
 }
-
 
 parse_yaml() {
     local yaml_file=$1
@@ -100,32 +103,151 @@ stop_tmux_session() {
     log_info "Successfully stopped tmux session '$session_name'"
 }
 
-main() {
-    # Check dependencies first
-    check_dependencies
+launch_remote(){
+    local SYSTEM_NAME="$1"
+    local stop="${2:-false}" # Default to 'false' if not provided
+    local yaml_file="${3:-}"  # Default to an empty string if not provided
 
-    # Parse command line arguments
-    if [[ $# -eq 0 || "$1" == "--help" ]]; then
-        show_usage
+    source ~/.bashrc
+    ROBOT_CONF="$AIRLAB_PATH/robot/robot.conf"
+    
+    if [[ ! -f "$ROBOT_CONF" ]]; then
+        log_error "Robot configuration file not found at '$ROBOT_CONF'"
+        exit 1
+    fi
+
+    # Load the target system's SSH address from robot.conf
+    ROBOT_SSH_ADDRESS=$(grep "^$SYSTEM_NAME=" "$ROBOT_CONF" | cut -d= -f2)
+    if [[ -z "$ROBOT_SSH_ADDRESS" ]]; then
+        log_error "System '$SYSTEM_NAME' not found in $ROBOT_CONF"
+        exit 1
+    fi
+
+    local robot_password
+    log_info "Enter password for $ROBOT_SSH_ADDRESS:"
+    read -s robot_password
+    [[ -z "$robot_password" ]] && error_exit "Password cannot be empty"
+    echo
+
+    # Check SSH connection before attempting any operation
+    if ! sshpass -p "$robot_password" ssh -q -o ConnectTimeout=15 -o StrictHostKeyChecking=no "$ROBOT_SSH_ADDRESS" exit; then
+        log_error "Cannot connect to remote system '$ROBOT_SSH_ADDRESS'"
+        exit 1
+    fi
+    log_info "SSH connection successful"
+
+    ROBOT_INFO_PATH="$AIRLAB_PATH/robot/robot_info.yaml"
+    if [[ ! -f "$ROBOT_INFO_PATH" ]]; then
+        log_error "Robot info file not found at '$ROBOT_INFO_PATH'"
+        exit 1
+    fi
+
+    local LAUNCH_NAME
+
+    if [[ -z "$yaml_file" ]]; then
+        # Parse the workspace path and handle errors
+        yaml_file=$(parse_yaml "$ROBOT_INFO_PATH" "$SYSTEM_NAME.LAUNCH_FILE_PATH") || {
+            log_error "Failed to get launch fileA path from robot_info.yaml"
+            exit 1
+        }    
+        if [[ -z "$yaml_file" ]]; then
+            log_error "Launch File path is empty in robot_info.yaml"
+            exit 1
+        fi
+        LAUNCH_NAME="$(basename "${yaml_file%.*}")"
+    else
+        # Parse the workspace path and handle errors
+        ws_path=$(parse_yaml "$ROBOT_INFO_PATH" "$SYSTEM_NAME.ws_path") || {
+            log_error "Failed to get workspace path from robot_info.yaml"
+            exit 1
+        }    
+        if [[ -z "$ws_path" ]]; then
+            log_error "Workspace path is empty in robot_info.yaml"
+            exit 1
+        fi
+        yaml_file="$ws_path/$yaml_file"
+        LAUNCH_NAME="$(basename "${yaml_file%.*}")"
+    fi
+
+    if [[ "$stop" == true ]]; then
+        log_info "Stopping tmux session '$LAUNCH_NAME' on remote system $SYSTEM_NAME..."
+        if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "tmux kill-session -t $LAUNCH_NAME 2>/dev/null || (echo 'No active tmux session named $LAUNCH_NAME' >&2 && exit 1)"; then
+            log_error "Failed to stop remote tmux session"
+            exit 1
+        fi
+        log_info "Successfully stopped remote tmux session"
         exit 0
     fi
 
-    # Get the robot name (which determines the launch file name)
-    LAUNCH_NAME="$1"
-    YAML_FILE="$AIRLAB_PATH/launch/$LAUNCH_NAME.yaml"
-
-    # Parse flags
-    SYSTEM_NAME=""
-    STOP_FLAG=false
-    shift  # Remove the first argument (LAUNCH_NAME)
+    log_info "Launching $LAUNCH_NAME.yaml on remote system $SYSTEM_NAME"
     
+    # Launch on remote system with error handling
+    if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "tmuxp load -s "$LAUNCH_NAME" $yaml_file"; then
+        log_error "Failed to launch on remote system"
+        exit 1
+    fi
+}
+
+launch_local() {
+    local stop="${1:-false}" # Default to 'false' if not provided
+    local yaml_file="${2:-}"  # Default to an empty string if not provided
+
+
+    source ~/.bashrc
+    local LAUNCH_NAME
+
+    # If no YAML file is provided, use the default launch file path
+    if [[ -z "$yaml_file" ]]; then
+        yaml_file="$LAUNCH_FILE_PATH"
+        LAUNCH_NAME="$(basename "${yaml_file%.*}")"
+    else
+        yaml_file="$AIRLAB_PATH/$yaml_file"
+        LAUNCH_NAME="$(basename "${yaml_file%.*}")"
+    fi
+
+    # Stop the tmux session if the flag is set
+    if [[ "$stop" == true ]]; then
+        log_info "Stopping local tmux session '$LAUNCH_NAME'..."
+        if ! stop_tmux_session "$LAUNCH_NAME"; then
+            exit 1
+        fi
+        exit 0
+    fi
+
+    # Check if the YAML file exists locally before launching
+    if [[ ! -f "$yaml_file" ]]; then
+        log_error "Launch file '$yaml_file' not found."
+        exit 1
+    fi
+
+    log_info "Launching '$LAUNCH_NAME.yaml' locally..."
+    if ! tmuxp load -s "$LAUNCH_NAME" "$yaml_file"; then
+        log_error "Failed to launch locally"
+        exit 1
+    fi
+}
+
+main() {
+    # Check dependencies
+    check_dependencies
+    [[ $# -lt 1 ]] && { show_usage; error_exit "No command provided"; }
+
+    local system="$1"
+    shift
+
+    local yaml_file=""
+    local stop=false
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --system=*)
-                SYSTEM_NAME="${1#--system=}"
+            --yaml_file=*)
+                yaml_file="${1#--yaml_file=}"
                 ;;
             --stop)
-                STOP_FLAG=true
+                stop=true
+                ;;
+            --help)
+                show_usage
+                exit 0
                 ;;
             *)
                 log_error "Invalid option: $1"
@@ -136,94 +258,30 @@ main() {
         shift
     done
 
-    # Handle remote system operations
-    if [[ -n "$SYSTEM_NAME" ]]; then
-        ROBOT_CONF="$AIRLAB_PATH/robot/robot.conf"
-        
-        if [[ ! -f "$ROBOT_CONF" ]]; then
-            log_error "Robot configuration file not found at '$ROBOT_CONF'"
-            exit 1
-        fi
 
-        # Load the target system's SSH address from robot.conf
-        ROBOT_SSH_ADDRESS=$(grep "^$SYSTEM_NAME=" "$ROBOT_CONF" | cut -d= -f2)
-        if [[ -z "$ROBOT_SSH_ADDRESS" ]]; then
-            log_error "System '$SYSTEM_NAME' not found in $ROBOT_CONF"
-            exit 1
-        fi
-
-        local robot_password
-        log_info "Enter password for $ROBOT_SSH_ADDRESS:"
-        read -s robot_password
-        [[ -z "$robot_password" ]] && error_exit "Password cannot be empty"
-        echo
-
-        # Check SSH connection before attempting any operation
-        if ! sshpass -p "$robot_password" ssh -q -o ConnectTimeout=15 -o StrictHostKeyChecking=no "$ROBOT_SSH_ADDRESS" exit; then
-            log_error "Cannot connect to remote system '$ROBOT_SSH_ADDRESS'"
-            exit 1
-        fi
-        log_info "SSH connection successful"
-
-        if [[ "$STOP_FLAG" == true ]]; then
-            log_info "Stopping tmux session '$LAUNCH_NAME' on remote system $SYSTEM_NAME..."
-            if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "tmux kill-session -t $LAUNCH_NAME 2>/dev/null || (echo 'No active tmux session named $LAUNCH_NAME' >&2 && exit 1)"; then
-                log_error "Failed to stop remote tmux session"
-                exit 1
+    case "$system" in
+        local)
+            # Call launch_local with yaml_file only if it's not empty
+            if [[ -n "$yaml_file" ]]; then
+                launch_local "$stop" "$yaml_file"
+            else
+                launch_local "$stop"
             fi
-            log_info "Successfully stopped remote tmux session"
-            exit 0
-        fi
-
-        log_info "Launching $LAUNCH_NAME on remote system $SYSTEM_NAME"
-
-        ROBOT_INFO_PATH="$AIRLAB_PATH/robot/robot_info.yaml"
-        if [[ ! -f "$ROBOT_INFO_PATH" ]]; then
-            log_error "Robot info file not found at '$ROBOT_INFO_PATH'"
-            exit 1
-        fi
-
-        # Parse the workspace path and handle errors
-        LAUNCH_DIR=$(parse_yaml "$ROBOT_INFO_PATH" "$SYSTEM_NAME.ws_path") || {
-            log_error "Failed to get workspace path from robot_info.yaml"
-            exit 1
-        }
-        
-        if [[ -z "$LAUNCH_DIR" ]]; then
-            log_error "Workspace path is empty in robot_info.yaml"
-            exit 1
-        fi
-        
-        log_info "Loading launch file at $LAUNCH_DIR/launch/$LAUNCH_NAME.yaml"
-
-        # Launch on remote system with error handling
-        if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "tmuxp load -s "$LAUNCH_NAME" $LAUNCH_DIR/launch/$LAUNCH_NAME.yaml"; then
-            log_error "Failed to launch on remote system"
-            exit 1
-        fi
-    else
-        # Local operations
-        if [[ "$STOP_FLAG" == true ]]; then
-            log_info "Stopping local tmux session '$LAUNCH_NAME'..."
-            if ! stop_tmux_session "$LAUNCH_NAME"; then
-                exit 1
+            ;;
+        -h|--help)
+            show_usage
+            ;;
+        *)
+            # Call launch_remote with yaml_file only if it's not empty
+            if [[ -n "$yaml_file" ]]; then
+                launch_remote "$system" "$stop" "$yaml_file"
+            else
+                launch_remote "$system" "$stop"
             fi
-            exit 0
-        fi
-
-        # Check if the YAML file exists locally before launching
-        if [[ ! -f "$YAML_FILE" ]]; then
-            log_error "Launch file '$YAML_FILE' not found."
-            exit 1
-        fi
-
-        log_info "Launching '$LAUNCH_NAME.yaml' locally..."
-        if ! tmuxp load -s "$LAUNCH_NAME" "$YAML_FILE"; then
-            log_error "Failed to launch locally"
-            exit 1
-        fi
-    fi
+            ;;
+    esac
 }
+
 
 # Run main function
 main "$@"

@@ -7,6 +7,7 @@ A suite of local version control system (VCS) commands for managing multiple rep
 - [pull](#pull): Pull changes from remote repositories to local workspace
 - [push](#push): Push local changes to remote repositories
 - [status](#status): Check local repository status
+- [examples](#examples)
 
 ## init
 
@@ -20,17 +21,16 @@ airlab vcs init [OPTIONS]
 
 ### Options
 - `--repo_file=FILE`: YAML file containing repository information (default: repos.yaml)
-- `--path=DIR`: Local directory to clone repositories into (default: ws/src/)
+- `--path=DIR`: Local directory to clone repositories into (default: defined by dir in repos.yaml)
+- `--all`: Apply the operation to all YAML files in the version-control directory.
 - `--help`: Display help message
 
 ### Features
 - Creates local directory structure
 - Copies YAML configuration to workspace
 - Clones repositories to the directory
-- Updates repository configuration in /tmp/repo_config.txt (For system use)
 - Path is relative to your workspace path ($AIRLAB_PATH)
-
-Note: if repo_file is perception.yaml it will create a folder named perception and clone all repositories in the perception folder
+- --all flag cannot be used with --repo_file and --path flag due to obvious reasons
 
 ### Dependencies
 - git
@@ -52,7 +52,7 @@ airlab vcs pull [OPTIONS]
 
 ### Features
 - Supports rebasing (default) or regular pulls
-- Updates all repositories specified in the YAML file
+- Provides colored output for status updates
 
 ## push
 
@@ -82,8 +82,7 @@ airlab vcs status [OPTIONS]
 ```
 
 ### Options
-- `--repo_file=FILE`: Repository configuration file (defaults to base path) \
-Base Path means it recursively searched for git repositories and performs operations on it!
+- `show_branch`: Show the current branch of the repository
 - `--help`: Display help message
 
 ### Features
@@ -95,7 +94,6 @@ Base Path means it recursively searched for git repositories and performs operat
 
 ### Configuration
 - Uses YAML configuration file from local version-control directory
-- Repository paths are stored in /tmp/repo_config.txt (For system use)
 - All paths are relative to $AIRLAB_PATH
 
 ### Error Handling
@@ -118,3 +116,30 @@ Color-coded logging for better visibility:
 - $AIRLAB_PATH environment variable must be set
 - Valid repository configuration in version-control directory
 - All operations are performed on local workspace
+
+## Examples
+```bash
+# clone all repositories in all yaml files present in the version control directory
+airlab vcs init --all
+
+# clone all repositories in the repos.yaml into path present in repos.yaml
+airlab vcs init --repo_file=repo.yaml
+
+# clone all repositories in the repos.yaml into a specified path
+airlab vcs init --repo_file=repo.yaml --path=/my/custom/path
+
+# pull changes from remote repositories with rebase
+airlab vcs pull
+
+# pull changes from remote repositories without rebase
+airlab vcs pull --no-rebase
+
+# push local changes to remote repositories
+airlab vcs push
+
+# check the status of all repositories in the default configuration file
+airlab vcs status
+
+# show branch of all repositories 
+airlab vcs status --show-branch
+```

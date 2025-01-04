@@ -22,14 +22,10 @@ Usage: airlab vcs push [OPTIONS]
 Push changes from repositories specified in repos.yaml file. The yaml file lives in $AIRLAB_PATH/version-control
 
 Options:
-  --repo_file=FILE    Specify the repository configuration file (default: repos.yaml). 
-                      It will only push from repos specified in that yaml file
-  --no-rebase         Perform a regular pull without rebasing
   --help              Display this help message and exit
 
 Examples:
   airlab vcs push
-  airlab vcs push --no-rebase
 
 Note: This script uses the 'vcs' command to interact with the repository.
 EOF

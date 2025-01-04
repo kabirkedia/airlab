@@ -19,7 +19,7 @@ show_usage() {
     echo
     echo -e "${YELLOW}Options:${NC}"
     echo "  --system=<system_name>    Specify the system name for remote operations."
-    echo "  --compose=<compose_file>  Specify a Docker Compose file (default: docker-compose.yml)."
+    echo "  --compose=<compose_file>  Specify a Docker Compose file (default: set by ENV VARIABLE: DOCKER_BUILD_PATH)."
     echo "  --help                    Display this help message."
     echo
     echo -e "${YELLOW}Examples:${NC}"
@@ -143,7 +143,9 @@ main() {
     done
 
     if [[ -n "$SYSTEM_NAME" ]]; then
+        # Remote operations
 
+        source ~/.bashrc
         ROBOT_CONF="$AIRLAB_PATH/robot/robot.conf"
         if [[ ! -f "$ROBOT_CONF" ]]; then
             log_error "Robot configuration file not found at '$ROBOT_CONF'"
@@ -188,7 +190,7 @@ main() {
                 log_error "Workspace path is empty in robot_info.yaml"
                 exit 1
             fi  
-            docker_build_path="$LAUNCH_DIR/docker/docker-compose.yml"    
+            docker_build_path="$LAUNCH_DIR/$COMPOSE_NAME"    
         else
             docker_build_path=$(parse_yaml "$ROBOT_INFO_PATH" "$SYSTEM_NAME.DOCKER_BUILD_PATH") || {
                 log_error "Failed to get docker-up path from robot_info.yaml"
@@ -202,10 +204,16 @@ main() {
         
         log_info "Building Docker file at $docker_build_path"
 
-        sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "source ~/.bashrc"
+        sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "source ~/.bashrc"export AIRLAB_PATH='$LAUNCH_DIR'
+
+        #setup remote ws path
+        remote_airlab_path=$(parse_yaml "$ROBOT_INFO_PATH" "$SYSTEM_NAME.ws_path") || {
+            log_error "Failed to get workspace path from robot_info.yaml"
+            exit 1
+        }
         
         # Launch on remote system with error handling
-        if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "docker compose -f "$docker_build_path" build"; then
+        if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "export AIRLAB_PATH='$remote_airlab_path' && docker compose -f "$docker_build_path" build"; then
             log_error "Failed to build image on remote system"
             exit 1
         fi
@@ -214,7 +222,7 @@ main() {
         check_dependencies
         source ~/.bashrc
         if [[ -n "$COMPOSE_NAME" ]]; then
-            COMPOSE_FILE="$AIRLAB_PATH/docker/$COMPOSE_NAME"
+            COMPOSE_FILE="$AIRLAB_PATH/$COMPOSE_NAME"
         else
             COMPOSE_FILE="$DOCKER_BUILD_PATH"
         fi

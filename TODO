@@ -1,9 +1,2 @@
-1. Make a much better README.md
-2. Add python-vcstool to deal with multiple git packages
-3. *Maybe: Remove the robot_info.yaml or use it such that user can add enviornment variables directly to the robot it. Will go well with sync*
-
-**Done**
-
-1. Solved Racing conditions
-2. Completed the Robot-Setup script with Adding Hostnames
-3. Use docker-compose from github in preinstall script
+1. Figure out how to set local hosts
+2. Write documentation for set_env

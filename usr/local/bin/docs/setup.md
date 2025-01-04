@@ -30,7 +30,7 @@ airlab setup local --path=/desired/installation/path
 When running airlab setup local, the command:
 - Creates the Airlab directory structure
 - Copies initial configuration files
-- Sets up the environment variables
+- Sets up the environment variables(airlab.env)
 - Updates the user's .bashrc file
 - Creates an initial airlab.env file
 
@@ -61,7 +61,7 @@ When running airlab setup <system_name>, the command:
 - Sets up the remote environment
 - Copies initial files
 - Installs or updates the Airlab package
-- Configures the remote environment
+- Configures the remote environment(airlab.env file)
 - Updates the remote .bashrc file
 - Updates the /etc/hosts file on host system. It creates an alias so that you directly ssh using hostname like `ping robot1`
 - Syncs the /etc/hosts file to the remote system so that it remains consistent across systems. It does not change system generated information
@@ -80,6 +80,15 @@ Contains environment variables for the Airlab workspace:
 ```bash
 AIRLAB_PATH=/path/to/workspace
 AIRLAB_SYSTEM=local|<robot_name>
+ROBOT_NAME=local|<robot_name>
+USER_NAME= <user_name>
+USER= <user_name>
+GROUP_NAME= <group_name>
+GROUP_ID= <group id>
+USER_ID= <user id>
+DOCKER_BUILD_PATH= <path/to/docker/compose>
+DOCKER_UP_PATH=<path/to/docker/compose>
+LAUNCH_FILE_PATH=<path/to/launch/file>
 ```
 
 ### robot.conf
@@ -96,6 +105,24 @@ robots:
     robot_ssh: "username@ip_address"
     ws_path: "/path/to/workspace"
     last_updated: "YYYY-MM-DD HH:MM:SS"
+```
+
+Example:
+```yaml
+  robot-1:
+    LAUNCH_FILE_PATH: "/home/airlab/airlab_ws/launch/sample.yaml"
+    DOCKER_UP_PATH: "/home/airlab/airlab_ws/docker/docker-compose.yml"
+    DOCKER_BUILD_PATH: "/home/airlab/airlab_ws/docker/docker-compose.yml"
+    ROBOT_NAME: "robot-1"
+    AIRLAB_SYSTEM: "robot-1"
+    USER_ID: "1000"
+    GROUP_ID: "1000"
+    GROUP_NAME: "airlab"
+    USER_NAME: "airlab"
+    ws_path: "/home/airlab/airlab_ws"
+    robot_ssh: "airlab@10.3.1.130"
+    last_updated: "2025-01-04 14:00:08"
+
 ```
 
 ## Best Practices
