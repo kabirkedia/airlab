@@ -127,7 +127,6 @@ EOF
 set_env_local() {
     set -e  # Exit immediately if a command exits with a non-zero status
 
-    source ~/.bashrc
     local input="$1"
     local ENV_FILE="$AIRLAB_PATH/airlab.env"
     log_info "Found Value $ENV_FILE. Processing"
@@ -204,9 +203,14 @@ set_env_remote() {
         exit 1
     }
 
+    REMOTE_USER=$(parse_yaml "$ROBOT_INFO_PATH" "$SYSTEM_NAME.USER_NAME") || {
+        log_error "Failed to get user from robot_info.yaml"
+        exit 1
+    }
+
     # Operate this script on the remote system
     if sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$ROBOT_SSH_ADDRESS" "dpkg -l | grep -q '^ii.*airlab'" ; then
-        if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "source $LAUNCH_DIR/airlab.env && airlab set_env local "$ENV_VARIABLE""; then
+        if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "export AIRLAB_PATH='$LAUNCH_DIR' && airlab set_env local "$ENV_VARIABLE""; then
             log_error "Failed to change value on remote system"
             exit 1
         fi
@@ -214,12 +218,15 @@ set_env_remote() {
         log_error "Airlab command is not installed"
     fi
 
+    source ~/.bashrc
+
     # Parse the variable name and value
-    local ENV_VARIABLE="${input%%=*}"
-    local ENV_VALUE="${input#*=}"
+    local ENV_VARIABLE_NAME="${ENV_VARIABLE%%=*}"
+    local ENV_VALUE="${ENV_VARIABLE#*=}"
     ENV_VALUE="${ENV_VALUE%\"}"  # Remove trailing quote
     ENV_VALUE="${ENV_VALUE#\"}"  # Remove leading quote
-    update_robot_info "$ROBOT_SSH_ADDRESS" "$SYSTEM_NAME" "$ENV_VARIABLE" "$ENV_VALUE" 
+    log_info "Setting $ENV_VARIABLE_NAME=$ENV_VALUE on $SYSTEM_NAME"
+    update_robot_info "$AIRLAB_PATH" "$SYSTEM_NAME" "$ENV_VARIABLE_NAME" "$ENV_VALUE" 
 }
 
 main() {
