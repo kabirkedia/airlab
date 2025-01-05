@@ -321,6 +321,34 @@ read_remote_variable() {
     echo "$variable_value"
 }
 
+
+# Function to read environment variables from a YAML file
+read_env_from_yaml() {
+    local yaml_file="$1"
+    local robot_name="$2"
+    local output_file="$3"
+
+    # Check if the YAML file exists
+    if [ ! -f "$yaml_file" ]; then
+        log_error "YAML file not found at $yaml_file"
+        return 1
+    fi
+
+    # Extract environment variables for the specified robot
+    sed -n "/^  $robot_name:/,/^  [^[:space:]]/p" "$yaml_file" | \
+    	sed -E "1d" | \
+        sed -E 's/^    ([^:]+):[[:space:]]*"?(.*)"?$/\1=\2/' | \
+        sed -E 's/"$//' > "$output_file"
+
+    if [ -s "$output_file" ]; then
+        log_info "Environment variables for $robot_name have been extracted to $output_file:"
+        cat "$output_file"
+    else
+        log_error "No environment variables found for $robot_name in $yaml_file"
+        return 1
+    fi
+}
+
 setup_remote() {
     local robot_name="$1"
     local airlab_path="$2"
@@ -412,34 +440,38 @@ setup_remote() {
         fi
     fi
 
-    user_name=$(read_remote_variable "$robot_ssh_address" "$robot_password" "(id -un)")
-    group_name=$(read_remote_variable "$robot_ssh_address" "$robot_password" "(id -gn)")
-    group_id=$(read_remote_variable "$robot_ssh_address" "$robot_password" "(id -g)")
-    user_id=$(read_remote_variable "$robot_ssh_address" "$robot_password" "(id -u)")
+    local yaml_file="$remote_path/robot/robot_info.yaml"
 
-    local docker_build=$airlab_path/docker/docker-compose.yml
-    local docker_up=$airlab_path/docker/docker-compose.yml
-    local launch_path=$airlab_path/launch/sample.yaml
-    log_info "Updating robot configuration..."
-    update_robot_info "$remote_path" "$robot_name" "robot_ssh" "$robot_ssh_address"
-    update_robot_info "$remote_path" "$robot_name" "ws_path" "$airlab_path"
-    update_robot_info "$remote_path" "$robot_name" "ROBOT_NAME" "$robot_name"
-    update_robot_info "$remote_path" "$robot_name" "AIRLAB_SYSTEM" "$robot_name"
-    update_robot_info "$remote_path" "$robot_name" "USER_NAME" "$user_name"
-    update_robot_info "$remote_path" "$robot_name" "GROUP_NAME" "$group_name"
-    update_robot_info "$remote_path" "$robot_name" "GROUP_ID" "$group_id"
-    update_robot_info "$remote_path" "$robot_name" "USER_ID" "$user_id"
-    update_robot_info "$remote_path" "$robot_name" "DOCKER_BUILD_PATH" "$docker_build" --no-overwrite docker_build
-    update_robot_info "$remote_path" "$robot_name" "DOCKER_UP_PATH" "$docker_up" --no-overwrite docker_up
-    update_robot_info "$remote_path" "$robot_name" "LAUNCH_FILE_PATH" "$launch_path" --no-overwrite launch_path
+    if grep -q "^  $robot_name:" "$yaml_file"; then
+        log_info "Robot name '$robot_name' found in $yaml_file."
+        read -p "Found exsisting env variables. Proceed with them(y) or overwrite them(N) verison? (y/N): " confirm
+        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+            log_warn "Overwriting exsisting variables"
+            user_name=$(read_remote_variable "$robot_ssh_address" "$robot_password" "(id -un)")
+            group_name=$(read_remote_variable "$robot_ssh_address" "$robot_password" "(id -gn)")
+            group_id=$(read_remote_variable "$robot_ssh_address" "$robot_password" "(id -g)")
+            user_id=$(read_remote_variable "$robot_ssh_address" "$robot_password" "(id -u)")
 
-    log_warn "Updating environment variables..."
-    log_warn $docker_build
-    log_warn $docker_up
+            local docker_build=$airlab_path/docker/docker-compose.yml
+            local docker_up=$airlab_path/docker/docker-compose.yml
+            local launch_path=$airlab_path/launch/sample.yaml
+            log_info "Updating robot configuration..."
+            update_robot_info "$remote_path" "$robot_name" "robot_ssh" "$robot_ssh_address"
+            update_robot_info "$remote_path" "$robot_name" "ws_path" "$airlab_path"
+            update_robot_info "$remote_path" "$robot_name" "ROBOT_NAME" "$robot_name"
+            update_robot_info "$remote_path" "$robot_name" "AIRLAB_SYSTEM" "$robot_name"
+            update_robot_info "$remote_path" "$robot_name" "USER_NAME" "$user_name"
+            update_robot_info "$remote_path" "$robot_name" "GROUP_NAME" "$group_name"
+            update_robot_info "$remote_path" "$robot_name" "GROUP_ID" "$group_id"
+            update_robot_info "$remote_path" "$robot_name" "USER_ID" "$user_id"
+            update_robot_info "$remote_path" "$robot_name" "DOCKER_BUILD_PATH" "$docker_build" --no-overwrite docker_build
+            update_robot_info "$remote_path" "$robot_name" "DOCKER_UP_PATH" "$docker_up" --no-overwrite docker_up
+            update_robot_info "$remote_path" "$robot_name" "LAUNCH_FILE_PATH" "$launch_path" --no-overwrite launch_path
 
-    # Configure environment
-    log_info "Configuring environment..."
-    cat > /tmp/airlab.env << EOF
+            log_warn "Updating environment variables..."
+            # Configure environment
+            log_info "Configuring environment..."
+                cat > /tmp/airlab.env << EOF
 AIRLAB_PATH=$airlab_path
 AIRLAB_SYSTEM=$robot_name
 ROBOT_NAME=$robot_name
@@ -452,6 +484,12 @@ DOCKER_BUILD_PATH=$docker_build
 DOCKER_UP_PATH=$docker_up
 LAUNCH_FILE_PATH=$launch_path
 EOF
+        else
+            log_info "Proceeding with existing variables"
+            read_env_from_yaml "$yaml_file" "$robot_name" "/tmp/airlab.env"
+        fi
+    fi
+
     remote_copy "/tmp/airlab.env" "$robot_ssh_address:$airlab_path/airlab.env" "$robot_password"
     rm -f /tmp/airlab.env
 
@@ -468,36 +506,6 @@ Installation details:
   
 Note: Run 'source ~/.bashrc' on the remote system to apply changes
 EOF
-
-    log_info "Adding $robot_name to /etc/hosts file locally"
-    ip_addr=$(echo $robot_ssh_address | sed 's/.*@//')
-
-    [ -z "$ip_addr" ] && { log_error "Failed to parse IP"; exit 1; }
-
-    if grep -q "$robot_name" /etc/hosts; then
-        read -p "$robot_name exists. Overwrite? (y/n): " confirm
-        if [[ "$confirm" == [yY] ]]; then
-            sudo sed -i "/$robot_name/d" /etc/hosts && \
-            sudo sed -i "$ a $ip_addr $robot_name  #$robot_name:$robot_ssh_address" /etc/hosts && \
-            log_info "Entry updated" || log_error "Update failed"
-        else
-            log_info "Keeping existing entry"
-        fi
-    else
-        sudo sed -i "$ a $ip_addr $robot_name  #$robot_name:$robot_ssh_address" /etc/hosts && \
-        log_info "Entry added" || log_info "Addition failed"
-    fi
-
-    #Sync /etc/hosts
-    log_info "Sync /etc/hosts to $robot_name.(This doesn't change local-host)"
-    sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "head -n 9 /etc/hosts" > remote_header.tmp
-    sudo tail -n +9 "/etc/hosts" > local_body.tmp
-    sudo cat remote_header.tmp local_body.tmp > combined.tmp
-    remote_copy "combined.tmp" "$robot_ssh_address:/tmp/hosts" "$robot_password"
-    remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S mv /tmp/hosts /etc/hosts" "$robot_password"
-    remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S rm -rf /tmp/hosts" "$robot_password"
-    sudo rm -f remote_header.tmp local_body.tmp combined.tmp
-    log_info "Sync completed"
     log_info "✅ Remote setup completed successfully!"
 
     log_info "It is recommended to reboot the remote system"
