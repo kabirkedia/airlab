@@ -460,6 +460,7 @@ setup_remote() {
             log_info "Updating robot configuration..."
             update_robot_info "$remote_path" "$robot_name" "robot_ssh" "$robot_ssh_address"
             update_robot_info "$remote_path" "$robot_name" "ws_path" "$airlab_path"
+            update_robot_info "$remote_path" "$robot_name" "AIRLAB_PATH" "$airlab_path"
             update_robot_info "$remote_path" "$robot_name" "ROBOT_NAME" "$robot_name"
             update_robot_info "$remote_path" "$robot_name" "AIRLAB_SYSTEM" "$robot_name"
             update_robot_info "$remote_path" "$robot_name" "USER_NAME" "$user_name"
