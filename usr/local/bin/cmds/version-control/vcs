@@ -37,19 +37,19 @@ shift
 case "$COMMAND" in
     init)
         # Call the airlab-launch script with additional arguments
-        /usr/local/bin/version-control/init "$@"
+        /usr/local/bin/cmds/version-control/init "$@"
         ;;
     pull)
         # Call the airlab-setup script
-        /usr/local/bin/version-control/pull "$@"
+        /usr/local/bin/cmds/version-control/pull "$@"
         ;;
     push)
         # Call the airlab-setup script
-        /usr/local/bin/version-control/push "$@"
+        /usr/local/bin/cmds/version-control/push "$@"
         ;; 
     status)
         # Call the airlab-setup script
-        /usr/local/bin/version-control/status "$@"
+        /usr/local/bin/cmds/version-control/status "$@"
         ;;    
     --help)
         show_usage
