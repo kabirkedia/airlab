@@ -74,7 +74,7 @@ case "$COMMAND" in
         ;; 
     vcs)
         # Do git operations on multiple repositories
-        /usr/local/bin/cmds/version-control/vcstool "$@"
+        /usr/local/bin/cmds/version-control/vcs "$@"
         ;; 
     ssh)
         # ssh into a robot
