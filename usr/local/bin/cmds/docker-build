@@ -180,8 +180,9 @@ main() {
 
         local docker_build_path=""
 
-        if [[ -z "$COMPOSE_NAME" ]]; then
+        if [[ -n "$COMPOSE_NAME" ]]; then
             # Parse the workspace path and handle errors
+            log_info "Using compose file from command line"
             LAUNCH_DIR=$(parse_yaml "$ROBOT_INFO_PATH" "$SYSTEM_NAME.ws_path") || {
                 log_error "Failed to get workspace path from robot_info.yaml"
                 exit 1
@@ -192,6 +193,7 @@ main() {
             fi  
             docker_build_path="$LAUNCH_DIR/$COMPOSE_NAME"    
         else
+            log_info "Using default Docker build path"
             docker_build_path=$(parse_yaml "$ROBOT_INFO_PATH" "$SYSTEM_NAME.DOCKER_BUILD_PATH") || {
                 log_error "Failed to get docker-up path from robot_info.yaml"
                 exit 1
@@ -203,8 +205,6 @@ main() {
         fi
         
         log_info "Building Docker file at $docker_build_path"
-
-        sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "source ~/.bashrc"export AIRLAB_PATH='$LAUNCH_DIR'
 
         #setup remote ws path
         remote_airlab_path=$(parse_yaml "$ROBOT_INFO_PATH" "$SYSTEM_NAME.ws_path") || {
@@ -222,8 +222,10 @@ main() {
         check_dependencies
         source ~/.bashrc
         if [[ -n "$COMPOSE_NAME" ]]; then
+            log_info "Using compose file from command line"
             COMPOSE_FILE="$AIRLAB_PATH/$COMPOSE_NAME"
         else
+            log_info "Using default Docker build path"
             COMPOSE_FILE="$DOCKER_BUILD_PATH"
         fi
 

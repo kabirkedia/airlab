@@ -184,6 +184,7 @@ main() {
 
         if [[ -n "$COMPOSE_NAME" ]]; then
             # Parse the workspace path and handle errors
+            log_info "Using compose file from command line"
             LAUNCH_DIR=$(parse_yaml "$ROBOT_INFO_PATH" "$SYSTEM_NAME.ws_path") || {
                 log_error "Failed to get workspace path from robot_info.yaml"
                 exit 1
@@ -195,6 +196,7 @@ main() {
             docker_up_path="$LAUNCH_DIR/$COMPOSE_NAME"    
         else
             # Parse the workspace path and handle errors
+            log_info "Using default Docker_up_path"
             docker_up_path=$(parse_yaml "$ROBOT_INFO_PATH" "$SYSTEM_NAME.DOCKER_UP_PATH") || {
                 log_error "Failed to get docker-up path from robot_info.yaml"
                 exit 1
@@ -224,8 +226,10 @@ main() {
         source ~/.bashrc
         local COMPOSE_FILE=""
         if [[ -n "$COMPOSE_NAME" ]]; then
+            log_info "Using compose file from command line"
             COMPOSE_FILE="$AIRLAB_PATH/$COMPOSE_NAME"
         else
+            log_info "Using default Docker build path"
             COMPOSE_FILE="$DOCKER_UP_PATH"
         fi
         
