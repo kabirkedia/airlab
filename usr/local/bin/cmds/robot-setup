@@ -338,7 +338,9 @@ read_env_from_yaml() {
     sed -n "/^  $robot_name:/,/^  [^[:space:]]/p" "$yaml_file" | \
     	sed -E "1d" | \
         sed -E 's/^    ([^:]+):[[:space:]]*"?(.*)"?$/\1=\2/' | \
-        sed -E 's/"$//' > "$output_file"
+        sed -E 's/"$//' | \
+        sed '$d' | \
+        sed '$d' > "$output_file"
 
     if [ -s "$output_file" ]; then
         log_info "Environment variables for $robot_name have been extracted to $output_file:"
@@ -488,6 +490,44 @@ EOF
             log_info "Proceeding with existing variables"
             read_env_from_yaml "$yaml_file" "$robot_name" "/tmp/airlab.env"
         fi
+    else
+        user_name=$(read_remote_variable "$robot_ssh_address" "$robot_password" "(id -un)")
+        group_name=$(read_remote_variable "$robot_ssh_address" "$robot_password" "(id -gn)")
+        group_id=$(read_remote_variable "$robot_ssh_address" "$robot_password" "(id -g)")
+        user_id=$(read_remote_variable "$robot_ssh_address" "$robot_password" "(id -u)")
+
+        local docker_build=$airlab_path/docker/docker-compose.yml
+        local docker_up=$airlab_path/docker/docker-compose.yml
+        local launch_path=$airlab_path/launch/sample.yaml
+        log_info "Updating robot configuration..."
+        update_robot_info "$remote_path" "$robot_name" "robot_ssh" "$robot_ssh_address"
+        update_robot_info "$remote_path" "$robot_name" "ws_path" "$airlab_path"
+        update_robot_info "$remote_path" "$robot_name" "ROBOT_NAME" "$robot_name"
+        update_robot_info "$remote_path" "$robot_name" "AIRLAB_SYSTEM" "$robot_name"
+        update_robot_info "$remote_path" "$robot_name" "USER_NAME" "$user_name"
+        update_robot_info "$remote_path" "$robot_name" "GROUP_NAME" "$group_name"
+        update_robot_info "$remote_path" "$robot_name" "GROUP_ID" "$group_id"
+        update_robot_info "$remote_path" "$robot_name" "USER_ID" "$user_id"
+        update_robot_info "$remote_path" "$robot_name" "DOCKER_BUILD_PATH" "$docker_build" --no-overwrite docker_build
+        update_robot_info "$remote_path" "$robot_name" "DOCKER_UP_PATH" "$docker_up" --no-overwrite docker_up
+        update_robot_info "$remote_path" "$robot_name" "LAUNCH_FILE_PATH" "$launch_path" --no-overwrite launch_path
+
+        log_warn "Updating environment variables..."
+        # Configure environment
+        log_info "Configuring environment..."
+            cat > /tmp/airlab.env << EOF
+AIRLAB_PATH=$airlab_path
+AIRLAB_SYSTEM=$robot_name
+ROBOT_NAME=$robot_name
+USER_NAME=$user_name
+USER=$user_name
+GROUP_NAME=$group_name
+GROUP_ID=$group_id
+USER_ID=$user_id
+DOCKER_BUILD_PATH=$docker_build
+DOCKER_UP_PATH=$docker_up
+LAUNCH_FILE_PATH=$launch_path
+EOF
     fi
 
     remote_copy "/tmp/airlab.env" "$robot_ssh_address:$airlab_path/airlab.env" "$robot_password"

@@ -100,7 +100,6 @@ main() {
     # Get the robot name
     ROBOT_NAME="$1"
     
-
     # Check for robot configuration
     ROBOT_CONF="$AIRLAB_PATH/robot/robot.conf"
     if [[ ! -f "$ROBOT_CONF" ]]; then
@@ -108,6 +107,7 @@ main() {
         exit 1
     fi
 
+    set +e
     # Load the robot's SSH address from robot.conf
     ROBOT_SSH_ADDRESS=$(grep "^$ROBOT_NAME=" "$ROBOT_CONF" | cut -d= -f2)
     if [[ -z "$ROBOT_SSH_ADDRESS" ]]; then
