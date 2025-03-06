@@ -19,10 +19,20 @@ Key features:
 `airlab` is installed on the host machine that controls remote robotic systems. Remote systems are set up using the `setup` command, which automates much of the configuration.
 
 #### **Prerequisites**
-Ensure `dpkg-deb` is installed on your host machine:
-```bash
-sudo apt-get install dpkg-dev
-```
+
+1. **Install Docker Engine**:
+
+   Docker Engine can be installed using [instructions on their website](https://docs.docker.com/engine/install/ubuntu/#installation-methods).
+
+1. **Install Nvidia Container Toolkit**:
+
+    Nvidia container toolkit can be installed using [instructions on their website](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html); it also requires the CUDA Toolkit and NVIDIA Driver which can be found [here](https://developer.nvidia.com/cuda-downloads).
+
+1. **Install Other Dependencies**:
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y python3-pip curl lsb-release dpkg-dev tmux tmuxp openssh-server sshpass git rsync
+   ```
 
 #### **Installation Steps**
 
@@ -49,10 +59,15 @@ sudo apt-get install dpkg-dev
 4. **Install `airlab`**:
    ```bash
    sudo dpkg -i airlab.deb
+   ```
+
+5. **(Optional) Install Any Missing Dependencies**:
+
+    This command is intended to fix a broken install and may install missing dependencies, but installing all dependencies beforehand is more reliable.
+   ```bash
    sudo apt install -f -y
    ```
 
-`apt install -f` is intended to fix a broken install and install missing dependencies, but some dependencies may need to be installed manually.  Docker can be installed using instructions on their website (https://docs.docker.com/desktop/setup/install/linux/ubuntu/).  Nvidia container toolkit can be installed using instructions on their website (https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html); its dependencies for Ubuntu 22.04 can be found at [here](https://developer.nvidia.com/cuda-downloads?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=22.04&target_type=deb_network).
 
 ## Commands
 
