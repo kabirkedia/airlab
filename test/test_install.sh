@@ -1,6 +1,6 @@
 #!/bin/bash
 # This is intended to be run inside an Ubuntu 22.04 Docker container to verify that the install process in the README works.
-# It may not run fully; `sudo apt-get install -y nvidia-open` prompts for input which makes the script fail.
+# Must be run using 'source': `sudo apt-get install -y nvidia-open` prompts for input which makes this fail when run in a subshell.
 # Must be run from root of this repository
 
 set -e
