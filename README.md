@@ -31,7 +31,7 @@ Key features:
 1. **Install Other Dependencies**:
    ```bash
    sudo apt-get update
-   sudo apt-get install -y python3-pip curl lsb-release dpkg-dev tmux tmuxp openssh-server sshpass git rsync
+   sudo apt-get install -y curl dpkg-dev git lsb-release openssh-server python3-pip rsync sshpass tmux tmuxp
    ```
 
 #### **Installation Steps**

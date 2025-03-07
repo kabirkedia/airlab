@@ -5,10 +5,15 @@
 
 set -e
 
+# Setup container: install sudo
+
 apt-get update
 apt-get install -y sudo
+
+# Follow README instructions
+
 chmod -R a+rX *
-sudo apt-get install -y python3-pip curl lsb-release dpkg-dev tmux tmuxp openssh-server sshpass git rsync
+sudo apt-get install -y curl dpkg-dev git lsb-release openssh-server python3-pip rsync sshpass tmux tmuxp
 
 # Install Docker (user should do this manually)
 
