@@ -12,7 +12,7 @@ error_handler() {
 trap 'error_handler ${LINENO} $?' ERR
 
 # Check if running as root/sudo
-if [ "$EUID" -ne 0 ]; then 
+if [ "$EUID" -ne 0 ]; then
     echo "This script must be run as root or with sudo privileges"
     exit 1
 fi
@@ -70,17 +70,6 @@ else
     fi
 fi
 
-
-# Check for pip3
-echo "Checking for pip3..."
-if ! command -v pip3 &> /dev/null; then
-    echo "pip3 is not installed. Attempting to install..."
-    if ! sudo apt-get update && sudo apt-get install -y python3-pip; then
-        echo "Failed to install pip3"
-        exit 1
-    fi
-fi
-
 # Verify pip3 is executable
 PIP_PATH=$(which pip3)
 if [ ! -x "$PIP_PATH" ]; then
@@ -103,7 +92,7 @@ for pkg in $PIP_PACKAGES; do
     fi
 done
 
-## For docker-compose 
+## For docker-compose
 #Install Docker Compose
 DOCKER_COMPOSE_VERSION="2.32.1"  # Replace with your desired version or fetch dynamically
 

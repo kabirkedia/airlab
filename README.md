@@ -1,72 +1,77 @@
 # Airlab
 
-### **`airlab`: Simplified Deployment for Robotic Systems**  
+### **`airlab`: Simplified Deployment for Robotic Systems**
 
-`airlab` is a command-line tool that unifies essential deployment tasks for local and remote robotic systems. It streamlines file synchronization, launch file management, and environment setup by integrating tools like `rsync`, `docker`, and `tmux`.  
+`airlab` is a command-line tool that unifies essential deployment tasks for local and remote robotic systems. It streamlines file synchronization, launch file management, and environment setup by integrating tools like `rsync`, `docker`, and `tmux`.
 
-Key features:  
-- **File Sync**: Easy local-to-remote transfers.  
-- **Launch Management**: Simplified robotic launch file handling.  
-- **Environment Setup**: Automated configurations.  
-- **Unified Interface**: Combines multiple tools under one command.  
-- **Debian Package**: Quick install and updates for seamless deployment.  
+Key features:
+- **File Sync**: Easy local-to-remote transfers.
+- **Launch Management**: Simplified robotic launch file handling.
+- **Environment Setup**: Automated configurations.
+- **Unified Interface**: Combines multiple tools under one command.
+- **Debian Package**: Quick install and updates for seamless deployment.
 
-`airlab` reduces complexity and accelerates workflows, making it an essential utility for robotics development and deployment.  
+`airlab` reduces complexity and accelerates workflows, making it an essential utility for robotics development and deployment.
 
 
-### **Installing `airlab`**  
+### **Installing `airlab`**
 
-`airlab` is installed on the host machine that controls remote robotic systems. Remote systems are set up using the `setup` command, which automates much of the configuration.  
+`airlab` is installed on the host machine that controls remote robotic systems. Remote systems are set up using the `setup` command, which automates much of the configuration.
 
-#### **Prerequisites**  
-Ensure `dpkg-deb` is installed on your host machine:  
-```bash
-sudo apt-get install dpkg-dev
-```  
+#### **Prerequisites**
 
-#### **Installation Steps**  
+1. **Install Docker Engine**:
 
-1. **Clone the Repository**:  
+   Docker Engine can be installed using [instructions on their website](https://docs.docker.com/engine/install/ubuntu/#installation-methods).
+
+1. **Install Nvidia Container Toolkit**:
+
+    Nvidia container toolkit can be installed using [instructions on their website](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html); it also requires the CUDA Toolkit and NVIDIA Driver which can be found [here](https://developer.nvidia.com/cuda-downloads).
+
+1. **Install Other Dependencies**:
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y curl dpkg-dev git lsb-release openssh-server python3-pip rsync sshpass tmux tmuxp
+   ```
+
+#### **Installation Steps**
+
+1. **Clone the Repository**:
    ```bash
    git clone <repository-url>
    cd airlab
-   ```  
+   ```
 
-2. **Set File Permissions**:  
-   To ensure all files are executable, run:  
+2. **Set File Permissions**:
+   To ensure all files are executable, run:
    ```bash
    chmod -R a+rX *
-   ```  
+   ```
 
-   > *Note*: The goal is to make all files within the `airlab` directory executable. You can use other methods to achieve this if preferred.  
+   > *Note*: The goal is to make all files within the `airlab` directory executable. You can use other methods to achieve this if preferred.
 
-3. **Build the Debian Package**:  
+3. **Build the Debian Package**:
    ```bash
    cd ..
    dpkg-deb --build airlab
-   ```  
+   ```
 
-4. **Install `airlab`**:  
+4. **Install `airlab`**:
    ```bash
    sudo dpkg -i airlab.deb
-   sudo apt install -f -y
-   ```  
+   ```
 
-#### **Note on Dependencies**  
-`airlab` depends on the libraries listed in `requirements.txt`, but you don't need to install them manually.  
-- **Python dependencies** and `docker-compose` are installed using the **preinstall script**.  
-- Other system dependencies are installed when you run:  
+5. **(Optional) Install Any Missing Dependencies**:
+
+    This command is intended to fix a broken install and may install missing dependencies, but installing all dependencies beforehand is more reliable.
    ```bash
    sudo apt install -f -y
-   ```  
-This ensures all missing dependencies are handled seamlessly during installation.  
-
-Once installed, you’re ready to use `airlab` for managing your robotic systems. For remote systems, you don't need to install it just use the [`setup`]() command to configure them efficiently.  
+   ```
 
 
 ## Commands
 
-Once installed, you can use the `airlab` command to perform various tasks. Below are the usage details for each command. The most important command to run before using any other command is `setup`. 
+Once installed, you can use the `airlab` command to perform various tasks. Below are the usage details for each command. The most important command to run before using any other command is `setup`.
 
 
 ### Setup
@@ -148,7 +153,7 @@ airlab ssh <robot_name> [options]
 
 #### Quick Examples
 ```bash
-airlab ssh mt001                    # ssh into mt001 defined in robot.conf 
+airlab ssh mt001                    # ssh into mt001 defined in robot.conf
 ```
 
 #### Dependencies
@@ -508,7 +513,7 @@ This folder is responsible for managing the version control configurations for t
   ```
 
   In this example, `type` specifies the version control system (e.g., `git`), `url` provides the repository location, and `version` refers to the branch (e.g., `master`).
-  The path provided to the dir is relative to the workspace_path. 
+  The path provided to the dir is relative to the workspace_path.
 
 ##### Usage:
 - Regularly update the **repos.yaml** file to add new repositories, update existing ones, or change versions to ensure your workspace stays synchronized with the latest code and dependencies.
