@@ -14,16 +14,8 @@ sudo apt install -y \
     sshpass \
     ssh-askpass \
     git \
-    docker-compose \
     rsync \
-    date \
-    nvidia-container-toolkit \
-    docker-ce \
-    docker-ce-cli \
-    containerd.io
-
-# Ensure Docker service is started and enabled
-sudo systemctl enable --now docker
+    date 
 
 # Install pip dependencies
 pip3 install --upgrade pip
