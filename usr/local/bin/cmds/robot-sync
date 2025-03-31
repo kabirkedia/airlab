@@ -27,6 +27,9 @@ show_usage() {
     echo "  --delete                  Overwrite the current contents in the directory on the remote machine (same as --delete in rsync)"
     echo "  --path=<relative_path>    Sync only the contents of the given path. The path should be relative, starting from the ws_path provided during setup"
     echo "  --exclude=<pattern>       Exclude files or directories matching the pattern (same as rsync's --exclude)"
+    echo "  --time                    Sync the system time on the remote machine with the local time (requires sudo access on remote)"
+    echo "  --progress               Show progress during the sync operation (useful for large transfers)"
+    echo "                           Note: This option may slow down the sync process for large files."
     echo "  --help                    Show this help message"
     echo
     echo -e "${YELLOW}Examples:${NC}"
@@ -163,6 +166,7 @@ main() {
     SYNC_TIME=false
     SYNC_PATH=""
     DELETE=false
+    PROGRESS=false
     EXCLUDE_PATTERNS=()
     shift  # Remove the first argument (ROBOT_NAME)
     
@@ -180,6 +184,9 @@ main() {
                 ;;
             --path=*)
                 SYNC_PATH="${1#--path=}"
+                ;;
+            --progress)
+                PROGRESS=true
                 ;;
             --exclude=*)
                 EXCLUDE_PATTERNS+=("--exclude=${1#--exclude=}")
@@ -246,12 +253,27 @@ main() {
         fi
     fi
 
+    # Extract the port if specified in the SSH address
+    # Check if ROBOT_SSH_ADDRESS contains a port
+    if [[ "$ROBOT_SSH_ADDRESS" == *:* ]]; then
+        PORT=${ROBOT_SSH_ADDRESS##*:}
+        EXTRACTED=$(echo "$ROBOT_SSH_ADDRESS" | awk -F':' '{print $2}')
+        CLEANED=${EXTRACTED#//}
+        ROBOT_SSH_ADDRESS=$CLEANED
+        log_info "Syncing to machine $ROBOT_SSH_ADDRESS with port $PORT"
+    else
+        PORT=22
+    fi
+
+    log_info "Using port: $PORT"
+
     # Define source and destination paths
     LOCAL_WS_PATH="$AIRLAB_PATH"
-    
+
     # Define rsync options
     RSYNC_OPTS=(
         -avz  # archive mode, verbose, compress
+        -e "ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no -p $PORT" # Use SSH for remote connection
         --exclude='.git'        # exclude version control
         --exclude='build/'      # exclude build directories
         --exclude='devel/'      # exclude devel directories
@@ -274,6 +296,11 @@ main() {
         log_info "Overwriting contents of the directory"
     fi
 
+    # Add progress flag if requested
+    if [[ "$PROGRESS" == true ]]; then
+        RSYNC_OPTS+=("--progress")
+    fi
+
     # Add exclude patterns to rsync options
     if [[ ${#EXCLUDE_PATTERNS[@]} -gt 0 ]]; then
         RSYNC_OPTS+=("${EXCLUDE_PATTERNS[@]}")
@@ -294,8 +321,15 @@ main() {
         REMOTE_WS_PATH="$REMOTE_WS_PATH/$SYNC_PATH"
     fi
 
+    # CMD="sshpass -p "$robot_password" \
+    #     rsync "${RSYNC_OPTS[@]}"\
+    #     "$LOCAL_WS_PATH/" \
+    #     "$ROBOT_SSH_ADDRESS:$REMOTE_WS_PATH/""
+    # log_info "Executing: $CMD"
+    # Perform the rsync operation
     
-    if ! sshpass -p "$robot_password" rsync "${RSYNC_OPTS[@]}" \
+    if ! sshpass -p "$robot_password" \
+        rsync "${RSYNC_OPTS[@]}"\
         "$LOCAL_WS_PATH/" \
         "$ROBOT_SSH_ADDRESS:$REMOTE_WS_PATH/"; then
         log_error "Sync failed"
