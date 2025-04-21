@@ -15,10 +15,9 @@ sudo apt install -y \
     ssh-askpass \
     git \
     rsync \
-    date 
 
 # Install pip dependencies
 pip3 install --upgrade pip
-pip3 install pyyaml python3-vcstool
+sudo pip3 install pyyaml vcstool
 
 echo "Installation complete!"
