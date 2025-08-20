@@ -58,14 +58,13 @@
 1.  **Clone the Repository:**
 
     ```bash
-    git clone https://github.com/kabirkedia/airlab
-    cd airlab
+    git clone https://github.com/kabirkedia/airlab.git
     ```
 
 2.  **Set File Permissions:**  Ensure all files are executable:
 
     ```bash
-    chmod -R a+rX *
+    chmod -R a+rX airlab/
     ```
 
     *Note:*  The goal is to grant execute permissions to all files within the `airlab` directory. Alternative methods to achieve this are acceptable.
@@ -73,7 +72,6 @@
 3.  **Build the Debian Package:**
 
     ```bash
-    cd ..
     dpkg-deb --build airlab
     ```
 
