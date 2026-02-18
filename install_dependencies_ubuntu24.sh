@@ -21,5 +21,6 @@ sudo apt-get install -y \
 
 # With the Python venv.
 pip install pyyaml vcstool
+pip install setuptools==81.0.0
 
 echo "Done."
