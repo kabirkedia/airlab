@@ -20,7 +20,6 @@ sudo apt-get install -y \
     curl dpkg-dev git lsb-release openssh-server rsync sshpass tmux tmuxp
 
 # With the Python venv.
-pip install pyyaml vcstool
-pip install setuptools==81.0.0
+pip install pyyaml vcstool "setuptools<=81.0.0"
 
 echo "Done."
