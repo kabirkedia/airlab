@@ -6,5 +6,4 @@ Architecture: all
 Essential: no
 Maintainer: Kabir Kedia <kabirkedia0111@gmail.com>
 Description: Airlab custom Linux command: A custom command package for Linux to handle various tasks.
-Pre-Depends: curl, lsb-release, openssh-server, rsync, sshpass, tmux, tmuxp, git  
-Depends: git
+Pre-Depends: curl, lsb-release, openssh-server, rsync, sshpass, tmux, tmuxp, git

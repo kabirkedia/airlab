@@ -1,3 +1,8 @@
 #!/bin/bash
 
+# Ensure all command scripts are executable
+chmod +x /usr/local/bin/airlab
+chmod +x /usr/local/bin/cmds/*
+chmod +x /usr/local/bin/cmds/version-control/*
+
 echo "Succesfully setup AIRLAB on your system!✅"
