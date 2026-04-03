@@ -11,6 +11,7 @@ readonly NC='\033[0m' # No Color
 
 # Logging functions
 log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 
 show_usage() {
@@ -188,8 +189,8 @@ main() {
             exit 1
         fi
 
-        # Authenticate via SSH
-        local robot_password
+        # Authenticate via SSH (robot_password is set by ssh_authenticate)
+        robot_password=""
         if ! ssh_authenticate "$ROBOT_SSH_ADDRESS" "$FORCE_PASSWORD"; then
             exit 1
         fi
@@ -238,7 +239,7 @@ main() {
         log_info "Joining Docker container $CONTAINER_NAME locally"
 
         # Attempt to launch a bash shell in the container
-        if docker exec -it $CONTAINER_NAME bash; then
+        if ! docker exec -it $CONTAINER_NAME bash; then
             log_error "Failed to launch a shell in the container '$CONTAINER_NAME' on the local system."
             exit 1
         fi

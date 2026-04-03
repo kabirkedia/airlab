@@ -57,9 +57,9 @@ main() {
     done
 
     if [[ "$REBASE" == true ]]; then
-        vcs pull 
+        vcs pull --rebase
     else
-        vcs custom --args pull --rebase $repo_path
+        vcs pull
     fi
 }
 

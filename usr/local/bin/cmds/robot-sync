@@ -279,8 +279,8 @@ main() {
         exit 1
     fi
 
-    # Authenticate via SSH
-    local robot_password
+    # Authenticate via SSH (robot_password is set by ssh_authenticate)
+    robot_password=""
     if ! ssh_authenticate "$ROBOT_SSH_ADDRESS" "$FORCE_PASSWORD"; then
         exit 1
     fi

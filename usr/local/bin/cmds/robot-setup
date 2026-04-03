@@ -334,9 +334,9 @@ remote_exec() {
 
     if ! "${sshpass_prefix[@]}" ssh -o StrictHostKeyChecking=no "$host" "$cmd"; then
         if [ "$warn" = "warn" ]; then
-            error_warn "Failed to execute(Proceeding): $src to $dest"
+            error_warn "Failed to execute (proceeding): $cmd on $host"
         else
-            error_exit "Failed to execute: $src to $dest"
+            error_exit "Failed to execute: $cmd on $host"
         fi
     fi
 }
@@ -416,8 +416,8 @@ setup_remote() {
     robot_ssh_address=$(grep "^$robot_name=" "$robots_conf" | cut -d= -f2)
     [[ -z "$robot_ssh_address" ]] && error_exit "Robot '$robot_name' not found in configuration"
 
-    # Authenticate via SSH
-    local robot_password
+    # Authenticate via SSH (robot_password is set by ssh_authenticate)
+    robot_password=""
     if ! ssh_authenticate "$robot_ssh_address" "$force_password"; then
         exit 1
     fi
