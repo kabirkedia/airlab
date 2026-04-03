@@ -26,6 +26,10 @@ Options:
   --path=DIR          Specify the directory to clone repositories into. 
                       If not specified, the directory from the YAML file is used.
   --all               Apply the operation to all YAML files in the version-control directory.
+  --here              Re-initialize repos in the current directory using its AIRLAB_REPO_FILE.
+  --here --check      Compare the current directory structure against AIRLAB_REPO_FILE's YAML.
+  --here --from-scratch  Delete all YAML-defined repo folders and re-clone from scratch.
+                         Only proceeds if --check finds no discrepancies (no missing, no extra).
   --help              Display this help message and exit.
 
 Dependencies:
@@ -76,9 +80,157 @@ with open("$yaml_file", 'r') as file:
 EOF
 }
 
+check_repositories() {
+    local base_dir=$1
+    local yaml_file=$2
+
+    python3 - "$base_dir" "$yaml_file" <<'PYEOF'
+import sys
+import os
+import yaml
+
+GREEN  = "\033[0;32m"
+YELLOW = "\033[1;33m"
+RED    = "\033[0;31m"
+NC     = "\033[0m"
+
+base_dir  = sys.argv[1]
+yaml_file = sys.argv[2]
+
+with open(yaml_file, "r") as f:
+    data = yaml.safe_load(f)
+
+repos = set(data.get("repositories", {}).keys())
+
+# Build the set of intermediate prefixes (parent components, not the repo keys themselves)
+prefixes = set()
+for repo in repos:
+    parts = repo.split("/")
+    for i in range(1, len(parts)):
+        prefixes.add("/".join(parts[:i]))
+
+# --- Situation 1: in YAML but not on disk ---
+missing = []
+for repo in sorted(repos):
+    if not os.path.isdir(os.path.join(base_dir, repo)):
+        missing.append(repo)
+
+# --- Situation 2: on disk but not in YAML (pruned recursive walk) ---
+extra = []
+
+def walk(rel_path):
+    abs_path = os.path.join(base_dir, rel_path) if rel_path else base_dir
+    try:
+        entries = sorted(os.listdir(abs_path))
+    except PermissionError:
+        return
+    for entry in entries:
+        # Skip hidden directories and regular files
+        if entry.startswith("."):
+            continue
+        entry_abs = os.path.join(abs_path, entry)
+        if not os.path.isdir(entry_abs):
+            continue
+        child_rel = os.path.join(rel_path, entry) if rel_path else entry
+        if child_rel in repos:
+            # Known repo leaf — expected, do not descend into repo internals
+            continue
+        elif child_rel in prefixes:
+            # Known intermediate directory — descend
+            walk(child_rel)
+        else:
+            # Unknown folder — report and prune
+            extra.append(child_rel)
+
+walk("")
+
+# --- Print results ---
+if missing:
+    print(f"{YELLOW}[MISSING]{NC} Repositories defined in YAML but not found on disk:")
+    for m in missing:
+        print(f"  - {m}")
+else:
+    print(f"{GREEN}[OK]{NC} All repositories from YAML exist on disk.")
+
+if extra:
+    print(f"{YELLOW}[EXTRA]{NC} Folders on disk but not defined in YAML:")
+    for e in extra:
+        print(f"  + {e}")
+else:
+    print(f"{GREEN}[OK]{NC} No extra folders found on disk.")
+
+sys.exit(1 if missing or extra else 0)
+PYEOF
+}
+
+delete_yaml_repos() {
+    local base_dir=$1
+    local yaml_file=$2
+
+    # Extract top-level directories to delete from the YAML repo keys.
+    # For repos like "vcstool" and "old_tools/rosinstall", the top-level
+    # entries are "vcstool" and "old_tools".
+    local -a top_dirs
+    mapfile -t top_dirs < <(python3 - "$yaml_file" <<'PYEOF'
+import sys, yaml
+
+with open(sys.argv[1]) as f:
+    data = yaml.safe_load(f)
+
+top = set()
+for repo in data.get("repositories", {}).keys():
+    top.add(repo.split("/")[0])
+
+for d in sorted(top):
+    print(d)
+PYEOF
+    )
+
+    if [[ ${#top_dirs[@]} -eq 0 ]]; then
+        log_warn "No repositories found in YAML file"
+        return 0
+    fi
+
+    for dir_name in "${top_dirs[@]}"; do
+        local target="$base_dir/$dir_name"
+
+        # Safety: dir_name must not be empty
+        if [[ -z "$dir_name" ]]; then
+            log_error "Empty directory name from YAML, skipping"
+            continue
+        fi
+
+        # Safety: target must be strictly under base_dir
+        local resolved_base resolved_target
+        resolved_base=$(realpath "$base_dir")
+        resolved_target=$(realpath -m "$target")
+        if [[ "$resolved_target" != "$resolved_base/"* ]]; then
+            log_error "Refusing to delete '$resolved_target': not under '$resolved_base'"
+            continue
+        fi
+
+        # Safety: refuse to delete system-critical paths
+        case "$resolved_target" in
+            /|/usr|/usr/*|/etc|/etc/*|/bin|/bin/*|/sbin|/sbin/*|/var|/var/*|/home|/tmp|/boot|/dev|/proc|/sys)
+                log_error "Refusing to delete system path: $resolved_target"
+                continue
+                ;;
+        esac
+
+        if [[ -d "$target" ]]; then
+            log_info "Deleting $target"
+            rm -rf "$target"
+        else
+            log_warn "Directory not found, skipping: $target"
+        fi
+    done
+}
+
 process_repository() {
     local repo_dir=$1
     local yaml_file=$2
+    local yaml_basename
+    yaml_basename=$(basename "$yaml_file")
 
     log_info "Processing repository with YAML file: $yaml_file"
     mkdir -p "$repo_dir"
@@ -87,12 +239,16 @@ process_repository() {
     cp "$yaml_file" "$repo_dir"
 
     # Initialize the workspace
-    vcs import "$repo_dir" < "$repo_dir/$(basename "$yaml_file")"
+    vcs import "$repo_dir" < "$repo_dir/$yaml_basename"
     cd "$repo_dir"
     vcs custom --git --args submodule update --init --recursive
 
     # Clean up the YAML file in the target directory
-    rm -f "$repo_dir/$(basename "$yaml_file")"
+    rm -f "$repo_dir/$yaml_basename"
+
+    # Record which YAML file was used to initialize this directory
+    echo "$yaml_basename" > "$repo_dir/AIRLAB_REPO_FILE"
+    log_info "Created AIRLAB_REPO_FILE in $repo_dir with content: $yaml_basename"
 }
 
 process_all_repositories() {
@@ -118,6 +274,9 @@ main() {
     REPO_NAME=repos.yaml
     REPO_DIR=""
     ALL=false
+    HERE=false
+    CHECK=false
+    FROM_SCRATCH=false
 
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
@@ -131,6 +290,15 @@ main() {
             --all)
                 ALL=true
                 ;;
+            --here)
+                HERE=true
+                ;;
+            --check)
+                CHECK=true
+                ;;
+            --from-scratch)
+                FROM_SCRATCH=true
+                ;;
             --help)
                 show_usage
                 exit 0
@@ -143,6 +311,59 @@ main() {
         esac
         shift
     done
+
+    # Handle --check: requires --here
+    if [[ "$CHECK" == true && "$HERE" == false ]]; then
+        log_error "--check can only be used with --here"
+        exit 1
+    fi
+
+    # Handle --from-scratch: requires --here
+    if [[ "$FROM_SCRATCH" == true && "$HERE" == false ]]; then
+        log_error "--from-scratch can only be used with --here"
+        exit 1
+    fi
+
+    # Handle --here: read AIRLAB_REPO_FILE from PWD and treat it as --repo_file
+    if [[ "$HERE" == true ]]; then
+        local marker_file="$PWD/AIRLAB_REPO_FILE"
+        if [[ ! -f "$marker_file" ]]; then
+            log_error "No AIRLAB_REPO_FILE found in current directory ($PWD)"
+            exit 1
+        fi
+        REPO_NAME=$(cat "$marker_file")
+        if [[ -z "$REPO_NAME" ]]; then
+            log_error "AIRLAB_REPO_FILE is empty"
+            exit 1
+        fi
+        log_info "Read repo file from AIRLAB_REPO_FILE: $REPO_NAME"
+
+        local yaml_file="$AIRLAB_PATH/version_control/$REPO_NAME"
+        [[ -e "$yaml_file" ]] || { log_error "YAML file not found: $yaml_file"; exit 1; }
+
+        # If --check only, run the comparison and exit
+        if [[ "$CHECK" == true && "$FROM_SCRATCH" == false ]]; then
+            check_repositories "$PWD" "$yaml_file"
+            exit $?
+        fi
+
+        # If --from-scratch, verify clean state, delete, and re-clone
+        if [[ "$FROM_SCRATCH" == true ]]; then
+            log_info "Running pre-flight check before --from-scratch..."
+            if ! check_repositories "$PWD" "$yaml_file"; then
+                log_error "Check found discrepancies (missing or extra folders)."
+                log_error "Resolve them manually before using --from-scratch."
+                exit 1
+            fi
+
+            log_warn "Deleting all repository folders defined in $REPO_NAME and re-cloning..."
+            delete_yaml_repos "$PWD" "$yaml_file"
+
+            log_info "Re-cloning repositories..."
+            process_repository "$PWD" "$yaml_file"
+            exit 0
+        fi
+    fi
 
     local yaml_dir="$AIRLAB_PATH/version_control"
     if [[ -z "$REPO_DIR" ]]; then

@@ -18,7 +18,9 @@ function show_usage() {
     echo "  docker-join                   Attach to a running Docker container."
     echo "  docker-list                   List active Docker containers."
     echo "  vcs                           Manage multiple repositories with common git functions."
+    echo "  ping                          Ping a remote robot."
     echo "  ssh                           Connect to a remote machine using SSH."
+    echo "  auth                          Install SSH public key on a remote robot for password-less access."
     echo "  set_env                       Set environment variables on local or remote machine."
     echo "  set_hosts                     Set hostnames for robots or local environment."
     echo "  --help                        Show this help message."
@@ -76,10 +78,18 @@ case "$COMMAND" in
         # Do git operations on multiple repositories
         /usr/local/bin/cmds/version-control/vcs "$@"
         ;; 
+    ping)
+        # Ping a remote robot
+        /usr/local/bin/cmds/ping "$@"
+        ;;
     ssh)
         # ssh into a robot
         /usr/local/bin/cmds/ssh "$@"
-        ;; 
+        ;;
+    auth)
+        # Install SSH public key on a remote robot
+        /usr/local/bin/cmds/auth "$@"
+        ;;
     set_env)
         # Set environment variables
         /usr/local/bin/cmds/set_env "$@"

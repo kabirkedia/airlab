@@ -1,0 +1,267 @@
+#!/bin/bash
+
+# Exit on error, undefined variables, and pipe failures
+set -euo pipefail
+
+# Color codes for output
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly CYAN='\033[0;36m'
+readonly NC='\033[0m' # No Color
+
+# Logging functions
+log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
+
+# Function to print usage information
+show_usage() {
+    echo -e "${YELLOW}Usage:${NC}"
+    echo "  airlab auth <robot_name> [options]"
+    echo
+    echo -e "${YELLOW}Description:${NC}"
+    echo "  Inject a local SSH public key into a remote robot's authorized_keys file"
+    echo "  to enable password-less SSH authentication."
+    echo
+    echo -e "${YELLOW}Arguments:${NC}"
+    echo "  <robot_name>              Name of the robot (must be defined in robot.conf)"
+    echo
+    echo -e "${YELLOW}Options:${NC}"
+    echo "  --help                    Show this help message"
+    echo
+    echo -e "${YELLOW}Examples:${NC}"
+    echo "  airlab auth mt001         # Copy your SSH public key to mt001"
+}
+
+# Function to check if required commands exist
+check_dependencies() {
+    local deps=("ssh" "sshpass")
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" >/dev/null 2>&1; then
+            log_error "Required dependency '$dep' is not installed."
+            exit 1
+        fi
+    done
+}
+
+parse_yaml() {
+    local yaml_file=$1
+    local key=$2
+    local result
+
+    # Check if file exists
+    if [[ ! -f "$yaml_file" ]]; then
+        log_error "YAML file not found: $yaml_file"
+        return 1
+    fi
+
+    # Check if python3 and PyYAML are available
+    if ! python3 -c "import yaml" 2>/dev/null; then
+        log_error "Python YAML module not found. Please install: pip3 install PyYAML"
+        return 1
+    fi
+
+    result=$(python3 -c '
+import sys
+import yaml
+
+try:
+    with open("'"$yaml_file"'", "r") as f:
+        data = yaml.safe_load(f)
+        value = data
+        for key in "'"$key"'".split("."):
+            if not isinstance(value, dict):
+                print("")
+                sys.exit(1)
+            value = value.get(key, "")
+        print(value)
+except Exception as e:
+    print("")
+    sys.exit(1)
+')
+
+    if [[ -z "$result" ]]; then
+        log_error "Failed to parse key '$key' from YAML file"
+        return 1
+    fi
+
+    echo "$result"
+}
+
+# Discover local SSH public keys and let the user pick one interactively.
+# Sets the variable `selected_pubkey_path` on success.
+select_pubkey() {
+    local ssh_dir="$HOME/.ssh"
+    local -a pubkeys=()
+
+    # Collect all .pub files
+    if [[ -d "$ssh_dir" ]]; then
+        while IFS= read -r -d '' f; do
+            pubkeys+=("$f")
+        done < <(find "$ssh_dir" -maxdepth 1 -name '*.pub' -print0 2>/dev/null | sort -z)
+    fi
+
+    if [[ ${#pubkeys[@]} -eq 0 ]]; then
+        log_error "No SSH public keys found in $ssh_dir"
+        log_info "You can generate one with: ${CYAN}ssh-keygen${NC}"
+        exit 1
+    fi
+
+    if [[ ${#pubkeys[@]} -eq 1 ]]; then
+        selected_pubkey_path="${pubkeys[0]}"
+        log_info "Found SSH public key: $selected_pubkey_path"
+        return 0
+    fi
+
+    # Multiple keys – interactive selection
+    echo
+    log_info "Multiple SSH public keys found. Select one to install:"
+    echo
+    local i
+    for i in "${!pubkeys[@]}"; do
+        printf "  ${CYAN}%d${NC}) %s\n" "$((i + 1))" "${pubkeys[$i]}"
+    done
+    echo
+    printf "Enter number (or press ESC to abort): "
+
+    while true; do
+        # Read a single character (or escape sequence)
+        IFS= read -rsn1 char
+
+        # ESC key
+        if [[ "$char" == $'\x1b' ]]; then
+            echo
+            log_warn "Aborted by user"
+            exit 0
+        fi
+
+        # Check if it is a valid digit in range
+        if [[ "$char" =~ ^[0-9]$ ]]; then
+            local idx=$((char))
+            if [[ $idx -ge 1 && $idx -le ${#pubkeys[@]} ]]; then
+                echo "$char"
+                selected_pubkey_path="${pubkeys[$((idx - 1))]}"
+                log_info "Selected: $selected_pubkey_path"
+                return 0
+            fi
+        fi
+
+        # For multi-digit input (>9 keys), fall back to line-based read
+        if [[ ${#pubkeys[@]} -gt 9 ]]; then
+            # Put back the character we already read and read a full line
+            local rest
+            IFS= read -r rest
+            local full_input="${char}${rest}"
+
+            if [[ "$full_input" =~ ^[0-9]+$ ]]; then
+                local idx=$((full_input))
+                if [[ $idx -ge 1 && $idx -le ${#pubkeys[@]} ]]; then
+                    selected_pubkey_path="${pubkeys[$((idx - 1))]}"
+                    log_info "Selected: $selected_pubkey_path"
+                    return 0
+                fi
+            fi
+
+            log_error "Invalid selection: $full_input"
+            exit 1
+        fi
+
+        # Invalid single character for <=9 keys
+        # Silently ignore and keep waiting
+    done
+}
+
+main() {
+    # Check dependencies first
+    check_dependencies
+
+    # Parse command line arguments
+    if [[ $# -eq 0 || "$1" == "--help" ]]; then
+        show_usage
+        exit 0
+    fi
+
+    # Get the robot name
+    ROBOT_NAME="$1"
+    shift
+
+    # Parse additional flags
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --help)
+                show_usage
+                exit 0
+                ;;
+            *)
+                log_error "Invalid option: $1"
+                show_usage
+                exit 1
+                ;;
+        esac
+        shift
+    done
+
+    # Check for robot configuration
+    ROBOT_CONF="$AIRLAB_PATH/robot/robot.conf"
+    if [[ ! -f "$ROBOT_CONF" ]]; then
+        log_error "Robot configuration file not found at '$ROBOT_CONF'"
+        exit 1
+    fi
+
+    set +e
+    # Load the robot's SSH address from robot.conf
+    ROBOT_SSH_ADDRESS=$(grep "^$ROBOT_NAME=" "$ROBOT_CONF" | cut -d= -f2)
+    if [[ -z "$ROBOT_SSH_ADDRESS" ]]; then
+        log_error "Robot '$ROBOT_NAME' not found in $ROBOT_CONF"
+        exit 1
+    fi
+    set -e
+
+    # Select the public key to install
+    local selected_pubkey_path
+    select_pubkey
+
+    # Always use password authentication for this command
+    local robot_password
+    log_info "Enter password for $ROBOT_SSH_ADDRESS:"
+    read -s robot_password
+    [[ -z "$robot_password" ]] && log_error "Password cannot be empty" && exit 1
+    echo
+
+    # Test SSH connection
+    if ! sshpass -p "$robot_password" ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "$ROBOT_SSH_ADDRESS" exit; then
+        log_error "Cannot connect to remote system '$ROBOT_SSH_ADDRESS'"
+        exit 1
+    fi
+    log_info "SSH connection successful"
+
+    # Read the public key
+    local pubkey_content
+    pubkey_content=$(cat "$selected_pubkey_path")
+
+    # Install the public key on the remote machine
+    log_info "Installing public key on $ROBOT_SSH_ADDRESS..."
+    if ! sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$ROBOT_SSH_ADDRESS" \
+        "mkdir -p ~/.ssh && chmod 700 ~/.ssh && \
+         if ! grep -qF '${pubkey_content}' ~/.ssh/authorized_keys 2>/dev/null; then \
+             echo '${pubkey_content}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && echo 'KEY_ADDED'; \
+         else \
+             echo 'KEY_EXISTS'; \
+         fi"; then
+        log_error "Failed to install public key on remote system"
+        exit 1
+    fi
+
+    # Verify key-based SSH now works
+    log_info "Verifying key-based SSH authentication..."
+    if ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no -o BatchMode=yes "$ROBOT_SSH_ADDRESS" exit 2>/dev/null; then
+        log_info "Key-based SSH authentication is now working for $ROBOT_SSH_ADDRESS"
+    else
+        log_warn "Key was installed but key-based SSH verification failed."
+        log_warn "You may need to check the remote SSH server configuration (e.g., PubkeyAuthentication)."
+    fi
+}
+
+# Run main function
+main "$@"

@@ -13,6 +13,7 @@ function show_usage() {
     echo "  pull    Pull changes from the remote repository"
     echo "  push    Push local changes to the remote repository"
     echo "  status  Show the current status of the AirLab project"
+    echo "  update  Pull, init missing repos, and pull again with summary"
     echo
     echo "Options:"
     echo "  --help  Show this help message"
@@ -50,7 +51,11 @@ case "$COMMAND" in
     status)
         # Call the airlab-setup script
         /usr/local/bin/cmds/version-control/status "$@"
-        ;;    
+        ;;
+    update)
+        # Pull, init missing repos, pull again
+        /usr/local/bin/cmds/version-control/update "$@"
+        ;;
     --help)
         show_usage
         exit 0
