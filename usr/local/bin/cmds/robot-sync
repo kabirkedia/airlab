@@ -30,6 +30,7 @@ show_usage() {
     echo "  --time                    Sync the system time on the remote machine with the local time (requires sudo access on remote)"
     echo "  --progress               Show progress during the sync operation (useful for large transfers)"
     echo "                           Note: This option may slow down the sync process for large files."
+    echo "  --password                Skip key-based SSH and prompt for password directly"
     echo "  --help                    Show this help message"
     echo
     echo -e "${YELLOW}Examples:${NC}"
@@ -47,7 +48,7 @@ show_usage() {
 
 # Function to check if required commands exist
 check_dependencies() {
-    local deps=("rsync" "ssh" "sshpass" "date")
+    local deps=("rsync" "ssh" "date")
     for dep in "${deps[@]}"; do
         if ! command -v "$dep" >/dev/null 2>&1; then
             log_error "Required dependency '$dep' is not installed."
@@ -59,37 +60,42 @@ check_dependencies() {
 sync_time() {
     local ssh_address=$1
     local password=$2
-    
+
+    local sshpass_prefix=()
+    if [[ -n "$password" ]]; then
+        sshpass_prefix=(sshpass -p "$password")
+    fi
+
     log_info "Syncing system time..."
-    
+
     # Get current local time in a format suitable for date command
     local current_time
     current_time=$(date "+%Y-%m-%d %H:%M:%S")
-    
+
     # Try to set the time on the remote system
-    if ! sshpass -p "$password" ssh "$ssh_address" "sudo date -s \"$current_time\"" >/dev/null 2>&1; then
+    if ! "${sshpass_prefix[@]}" ssh "$ssh_address" "sudo date -s \"$current_time\"" >/dev/null 2>&1; then
         log_warn "Failed to sync time using date command, trying hwclock..."
-        
+
         # If date command fails, try using hwclock
-        if ! sshpass -p "$password" ssh "$ssh_address" "echo $password | sudo -S hwclock --systohc" >/dev/null 2>&1; then
+        if ! "${sshpass_prefix[@]}" ssh "$ssh_address" "echo $password | sudo -S hwclock --systohc" >/dev/null 2>&1; then
             log_error "Failed to sync system time"
             return 1
         fi
     fi
-    
+
     # Verify the time sync
     local local_time remote_time time_diff
     local_time=$(date +%s)
-    remote_time=$(sshpass -p "$password" ssh "$ssh_address" "date +%s")
+    remote_time=$("${sshpass_prefix[@]}" ssh "$ssh_address" "date +%s")
     time_diff=$((local_time - remote_time))
     time_diff=${time_diff#-} # Get absolute value
-    
+
     if [ "$time_diff" -gt 2 ]; then
         log_warn "Time difference after sync: ${time_diff} seconds"
     else
         log_info "Time synchronized successfully"
     fi
-    
+
     return 0
 }
 
@@ -99,7 +105,12 @@ verify_path() {
     local remote_ws=$3
     local path=$4
 
-    if sshpass -p "$password" ssh "$ssh_address" "[ -e $remote_ws/$path ]"; then
+    local sshpass_prefix=()
+    if [[ -n "$password" ]]; then
+        sshpass_prefix=(sshpass -p "$password")
+    fi
+
+    if "${sshpass_prefix[@]}" ssh "$ssh_address" "[ -e $remote_ws/$path ]"; then
         return 0
     else
         return 1
@@ -150,6 +161,39 @@ except Exception as e:
     echo "$result"
 }
 
+ssh_authenticate() {
+    local ssh_address=$1
+    local force_password=${2:-false}
+    robot_password=""
+
+    if [[ "$force_password" == false ]]; then
+        log_info "Attempting key-based SSH to $ssh_address..."
+        if ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no -o BatchMode=yes "$ssh_address" exit 2>/dev/null; then
+            log_info "Key-based SSH connection successful"
+            return 0
+        fi
+        log_warn "Key-based SSH failed. Falling back to password authentication."
+    fi
+
+    if ! command -v sshpass >/dev/null 2>&1; then
+        log_error "Key-based SSH failed and 'sshpass' is not installed for password fallback."
+        log_error "Either set up SSH keys or install sshpass: sudo apt install sshpass"
+        return 1
+    fi
+
+    log_info "Enter password for $ssh_address:"
+    read -s robot_password
+    [[ -z "$robot_password" ]] && log_error "Password cannot be empty" && return 1
+    echo
+
+    if ! sshpass -p "$robot_password" ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "$ssh_address" exit; then
+        log_error "Cannot connect to remote system '$ssh_address'"
+        return 1
+    fi
+    log_info "SSH connection successful"
+    return 0
+}
+
 main() {
     # Check dependencies first
     check_dependencies
@@ -167,9 +211,10 @@ main() {
     SYNC_PATH=""
     DELETE=false
     PROGRESS=false
+    FORCE_PASSWORD=false
     EXCLUDE_PATTERNS=()
     shift  # Remove the first argument (ROBOT_NAME)
-    
+
     # Parse additional flags
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -190,6 +235,9 @@ main() {
                 ;;
             --exclude=*)
                 EXCLUDE_PATTERNS+=("--exclude=${1#--exclude=}")
+                ;;
+            --password)
+                FORCE_PASSWORD=true
                 ;;
             *)
                 log_error "Invalid option: $1"
@@ -231,19 +279,16 @@ main() {
         exit 1
     fi
 
-    # Get password for SSH connection
+    # Authenticate via SSH
     local robot_password
-    log_info "Enter password for $ROBOT_SSH_ADDRESS:"
-    read -s robot_password
-    [[ -z "$robot_password" ]] && log_error "Password cannot be empty" && exit 1
-    echo
-
-    # Test SSH connection
-    if ! sshpass -p "$robot_password" ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "$ROBOT_SSH_ADDRESS" exit; then
-        log_error "Cannot connect to remote system '$ROBOT_SSH_ADDRESS'"
+    if ! ssh_authenticate "$ROBOT_SSH_ADDRESS" "$FORCE_PASSWORD"; then
         exit 1
     fi
-    log_info "SSH connection successful"
+
+    local SSHPASS_PREFIX=()
+    if [[ -n "$robot_password" ]]; then
+        SSHPASS_PREFIX=(sshpass -p "$robot_password")
+    fi
 
     # Sync time if requested
     if [[ "$SYNC_TIME" == true ]]; then
@@ -313,7 +358,7 @@ main() {
         LOCAL_WS_PATH="$LOCAL_WS_PATH/$SYNC_PATH"
         if ! verify_path "$ROBOT_SSH_ADDRESS" "$robot_password" "$REMOTE_WS_PATH" "$SYNC_PATH"; then
             log_info "Remote path does not exist. Creating directory: $REMOTE_WS_PATH/$SYNC_PATH"
-            if ! sshpass -p "$robot_password" ssh "$ROBOT_SSH_ADDRESS" "mkdir -p $REMOTE_WS_PATH/$SYNC_PATH"; then
+            if ! "${SSHPASS_PREFIX[@]}" ssh "$ROBOT_SSH_ADDRESS" "mkdir -p $REMOTE_WS_PATH/$SYNC_PATH"; then
                 log_error "Failed to create remote directory: $REMOTE_WS_PATH/$SYNC_PATH"
                 exit 1
             fi
@@ -328,7 +373,7 @@ main() {
     # log_info "Executing: $CMD"
     # Perform the rsync operation
     
-    if ! sshpass -p "$robot_password" \
+    if ! "${SSHPASS_PREFIX[@]}" \
         rsync "${RSYNC_OPTS[@]}"\
         "$LOCAL_WS_PATH/" \
         "$ROBOT_SSH_ADDRESS:$REMOTE_WS_PATH/"; then

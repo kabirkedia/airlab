@@ -26,6 +26,7 @@ show_usage() {
     echo "  --yaml_file=<file_name>   Yaml Launch file. Defaults to LAUNCH_FILE_PATH which points to the launch file in the robot's workspace."
     echo "  You can change the default launch file path by setting the LAUNCH_FILE_PATH environment variable using airlab set_env command."
     echo "  --stop                    Stop the tmux session instead of starting it"
+    echo "  --password                Skip key-based SSH and prompt for password directly"
     echo "  --help                    Show this help message"
     echo
     echo -e "${YELLOW}Examples:${NC}"
@@ -82,6 +83,39 @@ except Exception as e:
     echo "$result"
 }
 
+ssh_authenticate() {
+    local ssh_address=$1
+    local force_password=${2:-false}
+    robot_password=""
+
+    if [[ "$force_password" == false ]]; then
+        log_info "Attempting key-based SSH to $ssh_address..."
+        if ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no -o BatchMode=yes "$ssh_address" exit 2>/dev/null; then
+            log_info "Key-based SSH connection successful"
+            return 0
+        fi
+        log_warn "Key-based SSH failed. Falling back to password authentication."
+    fi
+
+    if ! command -v sshpass >/dev/null 2>&1; then
+        log_error "Key-based SSH failed and 'sshpass' is not installed for password fallback."
+        log_error "Either set up SSH keys or install sshpass: sudo apt install sshpass"
+        return 1
+    fi
+
+    log_info "Enter password for $ssh_address:"
+    read -s robot_password
+    [[ -z "$robot_password" ]] && log_error "Password cannot be empty" && return 1
+    echo
+
+    if ! sshpass -p "$robot_password" ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "$ssh_address" exit; then
+        log_error "Cannot connect to remote system '$ssh_address'"
+        return 1
+    fi
+    log_info "SSH connection successful"
+    return 0
+}
+
 # Function to check if required commands exist
 check_dependencies() {
     local deps=("tmuxp" "ssh" "python3")
@@ -107,10 +141,11 @@ launch_remote(){
     local SYSTEM_NAME="$1"
     local stop="${2:-false}" # Default to 'false' if not provided
     local yaml_file="${3:-}"  # Default to an empty string if not provided
+    local force_password="${4:-false}" # Default to 'false' if not provided
 
     source ~/.bashrc
     ROBOT_CONF="$AIRLAB_PATH/robot/robot.conf"
-    
+
     if [[ ! -f "$ROBOT_CONF" ]]; then
         log_error "Robot configuration file not found at '$ROBOT_CONF'"
         exit 1
@@ -123,18 +158,16 @@ launch_remote(){
         exit 1
     fi
 
+    # Authenticate via SSH
     local robot_password
-    log_info "Enter password for $ROBOT_SSH_ADDRESS:"
-    read -s robot_password
-    [[ -z "$robot_password" ]] && error_exit "Password cannot be empty"
-    echo
-
-    # Check SSH connection before attempting any operation
-    if ! sshpass -p "$robot_password" ssh -q -o ConnectTimeout=15 -o StrictHostKeyChecking=no "$ROBOT_SSH_ADDRESS" exit; then
-        log_error "Cannot connect to remote system '$ROBOT_SSH_ADDRESS'"
+    if ! ssh_authenticate "$ROBOT_SSH_ADDRESS" "$force_password"; then
         exit 1
     fi
-    log_info "SSH connection successful"
+
+    local SSHPASS_PREFIX=()
+    if [[ -n "$robot_password" ]]; then
+        SSHPASS_PREFIX=(sshpass -p "$robot_password")
+    fi
 
     ROBOT_INFO_PATH="$AIRLAB_PATH/robot/robot_info.yaml"
     if [[ ! -f "$ROBOT_INFO_PATH" ]]; then
@@ -171,7 +204,7 @@ launch_remote(){
 
     if [[ "$stop" == true ]]; then
         log_info "Stopping tmux session '$LAUNCH_NAME' on remote system $SYSTEM_NAME..."
-        if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "tmux kill-session -t $LAUNCH_NAME 2>/dev/null || (echo 'No active tmux session named $LAUNCH_NAME' >&2 && exit 1)"; then
+        if ! "${SSHPASS_PREFIX[@]}" ssh -t "$ROBOT_SSH_ADDRESS" "tmux kill-session -t $LAUNCH_NAME 2>/dev/null || (echo 'No active tmux session named $LAUNCH_NAME' >&2 && exit 1)"; then
             log_error "Failed to stop remote tmux session"
             exit 1
         fi
@@ -182,7 +215,7 @@ launch_remote(){
     log_info "Launching $LAUNCH_NAME.yaml on remote system $SYSTEM_NAME"
     
     # Launch on remote system with error handling
-    if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "tmuxp load -s "$LAUNCH_NAME" $yaml_file"; then
+    if ! "${SSHPASS_PREFIX[@]}" ssh -t "$ROBOT_SSH_ADDRESS" "tmuxp load -s "$LAUNCH_NAME" $yaml_file"; then
         log_error "Failed to launch on remote system"
         exit 1
     fi
@@ -237,6 +270,7 @@ main() {
 
     local yaml_file=""
     local stop=false
+    local force_password=false
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --yaml_file=*)
@@ -244,6 +278,9 @@ main() {
                 ;;
             --stop)
                 stop=true
+                ;;
+            --password)
+                force_password=true
                 ;;
             --help)
                 show_usage
@@ -274,9 +311,9 @@ main() {
         *)
             # Call launch_remote with yaml_file only if it's not empty
             if [[ -n "$yaml_file" ]]; then
-                launch_remote "$system" "$stop" "$yaml_file"
+                launch_remote "$system" "$stop" "$yaml_file" "$force_password"
             else
-                launch_remote "$system" "$stop"
+                launch_remote "$system" "$stop" "" "$force_password"
             fi
             ;;
     esac

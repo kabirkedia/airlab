@@ -20,6 +20,7 @@ show_usage() {
     echo -e "${YELLOW}Options:${NC}"
     echo "  --system=<system_name>    Specify the system name for remote operations."
     echo "  --name=<container_name>   Specify the container to join."
+    echo "  --password                Skip key-based SSH and prompt for password directly."
     echo "  --help                    Display this help message."
     echo
     echo -e "${YELLOW}Examples:${NC}"
@@ -92,10 +93,42 @@ except Exception as e:
     echo "$result"
 }
 
+ssh_authenticate() {
+    local ssh_address=$1
+    local force_password=${2:-false}
+    robot_password=""
+
+    if [[ "$force_password" == false ]]; then
+        log_info "Attempting key-based SSH to $ssh_address..."
+        if ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no -o BatchMode=yes "$ssh_address" exit 2>/dev/null; then
+            log_info "Key-based SSH connection successful"
+            return 0
+        fi
+        log_warn "Key-based SSH failed. Falling back to password authentication."
+    fi
+
+    if ! command -v sshpass >/dev/null 2>&1; then
+        log_error "Key-based SSH failed and 'sshpass' is not installed for password fallback."
+        log_error "Either set up SSH keys or install sshpass: sudo apt install sshpass"
+        return 1
+    fi
+
+    log_info "Enter password for $ssh_address:"
+    read -s robot_password
+    [[ -z "$robot_password" ]] && log_error "Password cannot be empty" && return 1
+    echo
+
+    if ! "${SSHPASS_PREFIX[@]}" ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "$ssh_address" exit; then
+        log_error "Cannot connect to remote system '$ssh_address'"
+        return 1
+    fi
+    log_info "SSH connection successful"
+    return 0
+}
 
 # Function to check if required commands exist
 check_dependencies() {
-    local deps=("docker" "ssh" "sshpass")
+    local deps=("docker" "ssh")
     for dep in "${deps[@]}"; do
         if ! command -v "$dep" >/dev/null 2>&1; then
             log_error "Required dependency '$dep' is not installed."
@@ -115,6 +148,7 @@ main() {
 
     local SYSTEM_NAME=""
     local CONTAINER_NAME="docker-compose.yml"
+    local FORCE_PASSWORD=false
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --system=*)
@@ -123,7 +157,9 @@ main() {
             --name=*)
                 CONTAINER_NAME="${1#--name=}"
                 ;;
-            
+            --password)
+                FORCE_PASSWORD=true
+                ;;
             --help)
                 show_usage
                 exit 0
@@ -152,18 +188,16 @@ main() {
             exit 1
         fi
 
+        # Authenticate via SSH
         local robot_password
-        log_info "Enter password for $ROBOT_SSH_ADDRESS:"
-        read -s robot_password
-        [[ -z "$robot_password" ]] && error_exit "Password cannot be empty"
-        echo
-
-        # Check SSH connection before attempting any operation
-        if ! sshpass -p "$robot_password" ssh -q -o ConnectTimeout=15 -o StrictHostKeyChecking=no "$ROBOT_SSH_ADDRESS" exit; then
-            log_error "Cannot connect to remote system '$ROBOT_SSH_ADDRESS'"
+        if ! ssh_authenticate "$ROBOT_SSH_ADDRESS" "$FORCE_PASSWORD"; then
             exit 1
         fi
-        log_info "SSH connection successful"
+
+        local SSHPASS_PREFIX=()
+        if [[ -n "$robot_password" ]]; then
+            SSHPASS_PREFIX=(sshpass -p "$robot_password")
+        fi
 
         ROBOT_INFO_PATH="$AIRLAB_PATH/robot/robot_info.yaml"
         if [[ ! -f "$ROBOT_INFO_PATH" ]]; then
@@ -182,7 +216,7 @@ main() {
         fi 
 
         # Check if the container is running on the remote system
-        if ! sshpass -p "$robot_password" ssh "$ROBOT_SSH_ADDRESS" "docker ps --filter name=$CONTAINER_NAME --filter status=running | grep $CONTAINER_NAME"; then
+        if ! "${SSHPASS_PREFIX[@]}" ssh "$ROBOT_SSH_ADDRESS" "docker ps --filter name=$CONTAINER_NAME --filter status=running | grep $CONTAINER_NAME"; then
             log_error "Container '$CONTAINER_NAME' is not running on the remote system."
             exit 1
         fi
@@ -190,7 +224,7 @@ main() {
         log_info "Joining Docker container $CONTAINER_NAME at $ROBOT_SSH_ADDRESS"
 
         # Attempt to launch a bash shell in the container
-        if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "docker exec -it $CONTAINER_NAME bash"; then
+        if ! "${SSHPASS_PREFIX[@]}" ssh -t "$ROBOT_SSH_ADDRESS" "docker exec -it $CONTAINER_NAME bash"; then
             log_error "Failed to launch a shell in the container '$CONTAINER_NAME' on the remote system."
             exit 1
         fi

@@ -29,6 +29,7 @@ show_usage() {
     echo -e "${YELLOW}Options:${NC}"
     echo "  --path=<path>           Custom installation path (default: $DEFAULT_AIRLAB_PATH)"
     echo "  --force                 Force overwrite without prompting (use with caution)"
+    echo "  --password              Skip key-based SSH and prompt for password directly"
     echo
     echo -e "${YELLOW}Examples:${NC}"
     echo "  airlab setup local --path=/custom/path"
@@ -53,6 +54,7 @@ parse_args() {
     local args=("$@")
     local path="$DEFAULT_AIRLAB_PATH"
     local force=false
+    local password=false
 
     for arg in "${args[@]}"; do
         case "$arg" in
@@ -61,6 +63,9 @@ parse_args() {
                 ;;
             --force)
                 force=true
+                ;;
+            --password)
+                password=true
                 ;;
             *)
                 if [[ "$arg" != "local" && "$arg" != -* ]]; then
@@ -71,7 +76,7 @@ parse_args() {
         esac
     done
 
-    echo "$path $force"
+    echo "$path $force $password"
 }
 
 # Environment management functions
@@ -282,14 +287,52 @@ EOF
     log_info "Updated robot $robot_name $field in $ROBOT_INFO_FILE"
 }
 
+ssh_authenticate() {
+    local ssh_address=$1
+    local force_password=${2:-false}
+    robot_password=""
+
+    if [[ "$force_password" == false ]]; then
+        log_info "Attempting key-based SSH to $ssh_address..."
+        if ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no -o BatchMode=yes "$ssh_address" exit 2>/dev/null; then
+            log_info "Key-based SSH connection successful"
+            return 0
+        fi
+        log_warn "Key-based SSH failed. Falling back to password authentication."
+    fi
+
+    if ! command -v sshpass >/dev/null 2>&1; then
+        log_error "Key-based SSH failed and 'sshpass' is not installed for password fallback."
+        log_error "Either set up SSH keys or install sshpass: sudo apt install sshpass"
+        return 1
+    fi
+
+    log_info "Enter password for $ssh_address:"
+    read -s robot_password
+    [[ -z "$robot_password" ]] && log_error "Password cannot be empty" && return 1
+    echo
+
+    if ! sshpass -p "$robot_password" ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "$ssh_address" exit; then
+        log_error "Cannot connect to remote system '$ssh_address'"
+        return 1
+    fi
+    log_info "SSH connection successful"
+    return 0
+}
+
 # Remote setup helper functions
 remote_exec() {
     local host="$1"
     local cmd="$2"
     local password="$3"
     local warn="${4:-}"  # Optional fourth argument (defaults to empty)
-    
-    if ! sshpass -p "$password" ssh -o StrictHostKeyChecking=no "$host" "$cmd"; then
+
+    local sshpass_prefix=()
+    if [[ -n "$password" ]]; then
+        sshpass_prefix=(sshpass -p "$password")
+    fi
+
+    if ! "${sshpass_prefix[@]}" ssh -o StrictHostKeyChecking=no "$host" "$cmd"; then
         if [ "$warn" = "warn" ]; then
             error_warn "Failed to execute(Proceeding): $src to $dest"
         else
@@ -302,8 +345,13 @@ remote_copy() {
     local src="$1"
     local dest="$2"
     local password="$3"
-    
-    sshpass -p "$password" scp "$src" "$dest" || error_exit "Failed to copy: $src to $dest"
+
+    local sshpass_prefix=()
+    if [[ -n "$password" ]]; then
+        sshpass_prefix=(sshpass -p "$password")
+    fi
+
+    "${sshpass_prefix[@]}" scp "$src" "$dest" || error_exit "Failed to copy: $src to $dest"
 }
 
 read_remote_variable() {
@@ -355,7 +403,8 @@ setup_remote() {
     local robot_name="$1"
     local airlab_path="$2"
     local force="$3"
-    
+    local force_password="${4:-false}"
+
     # Validate robot configuration
     source $USER_HOME/.bashrc
     local remote_path=$AIRLAB_PATH
@@ -367,25 +416,25 @@ setup_remote() {
     robot_ssh_address=$(grep "^$robot_name=" "$robots_conf" | cut -d= -f2)
     [[ -z "$robot_ssh_address" ]] && error_exit "Robot '$robot_name' not found in configuration"
 
-    # Get password securely
+    # Authenticate via SSH
     local robot_password
-    log_info "Enter password for $robot_ssh_address:"
-    read -s robot_password
-    [[ -z "$robot_password" ]] && error_exit "Password cannot be empty"
-    echo
-
-    if ! sshpass -p "$robot_password" ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "$robot_ssh_address" exit; then
-        log_error "Cannot connect to remote system '$robot_ssh_address'"
+    if ! ssh_authenticate "$robot_ssh_address" "$force_password"; then
         exit 1
     fi
+
+    local SSHPASS_PREFIX=()
+    if [[ -n "$robot_password" ]]; then
+        SSHPASS_PREFIX=(sshpass -p "$robot_password")
+    fi
+
     # Check existing installation
     log_info "Checking existing installation..."
-    remote_home_dir=$(sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "echo \$HOME" | sed 's/^HOME=//')
+    remote_home_dir=$("${SSHPASS_PREFIX[@]}" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "echo \$HOME" | sed 's/^HOME=//')
     airlab_path=$(echo "$airlab_path" | sed "s|^~|$remote_home_dir|")
 
     log_info "Checking for workspace setup at $airlab_path"
 
-    if sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "[ -d '$airlab_path' ]"; then
+    if "${SSHPASS_PREFIX[@]}" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "[ -d '$airlab_path' ]"; then
         log_warn "Directory exists."
         if [ "$force" = true ]; then
             log_warn "Force flag set. Overwriting existing installation..."
@@ -407,11 +456,11 @@ setup_remote() {
 
     # Copy files
     log_info "Copying configuration files..."
-    sshpass -p "$robot_password" rsync -avz --exclude='.git' \
+    "${SSHPASS_PREFIX[@]}" rsync -avz --exclude='.git' \
         "$remote_path/" "$robot_ssh_address:$airlab_path/" || error_exit "Failed to copy files"
 
     # Install package if needed
-    if ! sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "dpkg -l | grep -q '^ii.*airlab'" ; then
+    if ! "${SSHPASS_PREFIX[@]}" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "dpkg -l | grep -q '^ii.*airlab'" ; then
         log_info "Installing airlab package..."
         sudo curl -L -o /tmp/airlab.zip https://github.com/kabirkedia/airlab/archive/refs/heads/main.zip
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S rm -rf /tmp/airlab-main /tmp/airlab-main.deb /tmp/airlab.zip" "$robot_password"
@@ -555,7 +604,7 @@ EOF
     log_info "It is recommended to reboot the remote system"
     read -p "Restart the system (y/n)" confirm
     if [[ "$confirm" == [yY] ]]; then
-        sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "echo '$robot_password' | sudo -S reboot" 
+        "${SSHPASS_PREFIX[@]}" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "echo '$robot_password' | sudo -S reboot" 
     else
         log_info "Skipping"
         log_info "Please reboot the system manually"
@@ -572,7 +621,7 @@ main() {
     local command="$1"
     shift
 
-    read -r AIRLAB_PATH FORCE <<< "$(parse_args "$@")"
+    read -r AIRLAB_PATH FORCE FORCE_PASSWORD <<< "$(parse_args "$@")"
 
     case "$command" in
         local)
@@ -582,7 +631,7 @@ main() {
             show_usage
             ;;
         *)
-            setup_remote "$command" "~/airlab_ws" "$FORCE"
+            setup_remote "$command" "~/airlab_ws" "$FORCE" "$FORCE_PASSWORD"
             ;;
     esac
 }

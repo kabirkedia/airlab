@@ -22,6 +22,7 @@ Arguments:
     ENV_VARIABLE  Environment variable to set along with the value
 
 Options:
+    --password   Skip key-based SSH and prompt for password directly
     -h, --help   Show this help message
 
 Examples:
@@ -72,6 +73,39 @@ except Exception as e:
     fi
     
     echo "$result"
+}
+
+ssh_authenticate() {
+    local ssh_address=$1
+    local force_password=${2:-false}
+    robot_password=""
+
+    if [[ "$force_password" == false ]]; then
+        log_info "Attempting key-based SSH to $ssh_address..."
+        if ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no -o BatchMode=yes "$ssh_address" exit 2>/dev/null; then
+            log_info "Key-based SSH connection successful"
+            return 0
+        fi
+        log_warn "Key-based SSH failed. Falling back to password authentication."
+    fi
+
+    if ! command -v sshpass >/dev/null 2>&1; then
+        log_error "Key-based SSH failed and 'sshpass' is not installed for password fallback."
+        log_error "Either set up SSH keys or install sshpass: sudo apt install sshpass"
+        return 1
+    fi
+
+    log_info "Enter password for $ssh_address:"
+    read -s robot_password
+    [[ -z "$robot_password" ]] && log_error "Password cannot be empty" && return 1
+    echo
+
+    if ! sshpass -p "$robot_password" ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "$ssh_address" exit; then
+        log_error "Cannot connect to remote system '$ssh_address'"
+        return 1
+    fi
+    log_info "SSH connection successful"
+    return 0
 }
 
 update_robot_info() {
@@ -162,6 +196,7 @@ set_env_local() {
 set_env_remote() {
     local SYSTEM_NAME="$1"
     local ENV_VARIABLE="$2"
+    local FORCE_PASSWORD="${3:-false}"
 
     source ~/.bashrc
 
@@ -178,18 +213,16 @@ set_env_remote() {
         exit 1
     fi
 
+    # Authenticate via SSH
     local robot_password
-    log_info "Enter password for $ROBOT_SSH_ADDRESS:"
-    read -s robot_password
-    [[ -z "$robot_password" ]] && error_exit "Password cannot be empty"
-    echo
-
-    # Check SSH connection before attempting any operation
-    if ! sshpass -p "$robot_password" ssh -q -o ConnectTimeout=15 -o StrictHostKeyChecking=no "$ROBOT_SSH_ADDRESS" exit; then
-        log_error "Cannot connect to remote system '$ROBOT_SSH_ADDRESS'"
+    if ! ssh_authenticate "$ROBOT_SSH_ADDRESS" "$FORCE_PASSWORD"; then
         exit 1
     fi
-    log_info "SSH connection successful"
+
+    local SSHPASS_PREFIX=()
+    if [[ -n "$robot_password" ]]; then
+        SSHPASS_PREFIX=(sshpass -p "$robot_password")
+    fi
 
     ROBOT_INFO_PATH="$AIRLAB_PATH/robot/robot_info.yaml"
     if [[ ! -f "$ROBOT_INFO_PATH" ]]; then
@@ -209,8 +242,8 @@ set_env_remote() {
     }
 
     # Operate this script on the remote system
-    if sshpass -p "$robot_password" ssh -o StrictHostKeyChecking=no "$ROBOT_SSH_ADDRESS" "dpkg -l | grep -q '^ii.*airlab'" ; then
-        if ! sshpass -p "$robot_password" ssh -t "$ROBOT_SSH_ADDRESS" "export AIRLAB_PATH='$LAUNCH_DIR' && airlab set_env local "$ENV_VARIABLE""; then
+    if "${SSHPASS_PREFIX[@]}" ssh -o StrictHostKeyChecking=no "$ROBOT_SSH_ADDRESS" "dpkg -l | grep -q '^ii.*airlab'" ; then
+        if ! "${SSHPASS_PREFIX[@]}" ssh -t "$ROBOT_SSH_ADDRESS" "export AIRLAB_PATH='$LAUNCH_DIR' && airlab set_env local "$ENV_VARIABLE""; then
             log_error "Failed to change value on remote system"
             exit 1
         fi
@@ -248,6 +281,21 @@ main() {
     local ENV_VARIABLE="$1"
     shift
 
+    local FORCE_PASSWORD=false
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --password)
+                FORCE_PASSWORD=true
+                ;;
+            *)
+                log_error "Invalid option: $1"
+                show_usage
+                exit 1
+                ;;
+        esac
+        shift
+    done
+
     case "$ROBOT_NAME" in
         local)
             set_env_local "$ENV_VARIABLE"
@@ -256,7 +304,7 @@ main() {
             show_usage
             ;;
         *)
-            set_env_remote "$ROBOT_NAME" "$ENV_VARIABLE"
+            set_env_remote "$ROBOT_NAME" "$ENV_VARIABLE" "$FORCE_PASSWORD"
             ;;
     esac
 
