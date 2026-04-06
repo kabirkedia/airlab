@@ -44,15 +44,6 @@
 
 2.  **NVIDIA Container Toolkit:** Install the NVIDIA Container Toolkit according to the [official NVIDIA documentation](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). This also requires the CUDA Toolkit and NVIDIA Driver, which can be found [here](https://developer.nvidia.com/cuda-downloads).
 
-3.  **Other Dependencies:** Install the following dependencies using `apt`:
-
-    ```bash
-    sudo apt-get update
-    sudo apt-get install -y curl dpkg-dev git lsb-release openssh-server python3-pip rsync sshpass tmux tmuxp
-    ```
-
-    Alternatively, run the included `install.sh` script.
-
 ### Installation Steps
 
 1.  **Clone the Repository:**
@@ -69,19 +60,37 @@
 
     *Note:*  The goal is to grant execute permissions to all files within the `airlab` directory. Alternative methods to achieve this are acceptable.
 
-3.  **Build the Debian Package:**
+3.  **Run the install script:**
 
     ```bash
-    dpkg-deb --build airlab
+    cd airlab
+    ./install.sh
     ```
 
-4.  **Install `airlab`:**
+    The install script handles the full installation process:
+    -   Installs apt dependencies (`python3-pip`, `python3-venv`, etc.)
+    -   Creates a Python virtual environment at `~/VENVs/airlab`
+    -   Installs Python dependencies (`pyyaml`, `vcstool`, etc.)
+    -   Builds and installs the `airlab` Debian package
+
+    **Virtual environment options:**
+
+    If the `~/VENVs/airlab` virtual environment already exists, the script will prompt you to remove and re-create it or keep the existing one. You can also control this behavior with command-line flags:
 
     ```bash
-    sudo dpkg -i airlab.deb
+    # Always remove and re-create the venv (no prompt)
+    ./install.sh --override-venv
+
+    # Error out if the venv already exists (no prompt)
+    ./install.sh --no-override-venv
+
+    # Skip venv creation entirely — use whatever venv is currently active
+    ./install.sh --skip-venv
     ```
 
-5.  **(Optional) Install Missing Dependencies:** This command can attempt to fix broken installations by installing missing dependencies. While it can be helpful, it's generally more reliable to ensure all prerequisites are installed beforehand.
+    The `--skip-venv` option is useful when you manage your own virtual environment (e.g., conda, poetry, or a shared team venv). It requires that a virtual environment is already active in the current terminal session. Python dependencies will be installed into that active venv instead of creating `~/VENVs/airlab`.
+
+4.  **(Optional) Install Missing Dependencies:** This command can attempt to fix broken installations by installing missing dependencies. While it can be helpful, it's generally more reliable to ensure all prerequisites are installed beforehand.
 
     ```bash
     sudo apt install -f -y
