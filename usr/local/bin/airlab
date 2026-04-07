@@ -23,6 +23,7 @@ function show_usage() {
     echo "  auth                          Install SSH public key on a remote robot for password-less access."
     echo "  set_env                       Set environment variables on local or remote machine."
     echo "  set_hosts                     Set hostnames for robots or local environment."
+    echo "  cd                            Change directory relative to \$AIRLAB_PATH (shell function)."
     echo "  --help                        Show this help message."
     echo "  --version                     Show the version of the airlab command."
     echo "Run 'airlab <command>' for specific command usage."
