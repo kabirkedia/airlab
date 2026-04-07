@@ -52,15 +52,7 @@
     git clone https://github.com/kabirkedia/airlab.git
     ```
 
-2.  **Set File Permissions:**  Ensure all files are executable:
-
-    ```bash
-    chmod -R a+rX airlab/
-    ```
-
-    *Note:*  The goal is to grant execute permissions to all files within the `airlab` directory. Alternative methods to achieve this are acceptable.
-
-3.  **Run the install script:**
+2.  **Run the install script:**
 
     ```bash
     cd airlab
@@ -90,7 +82,7 @@
 
     The `--skip-venv` option is useful when you manage your own virtual environment (e.g., conda, poetry, or a shared team venv). It requires that a virtual environment is already active in the current terminal session. Python dependencies will be installed into that active venv instead of creating `~/VENVs/airlab`.
 
-4.  **(Optional) Install Missing Dependencies:** This command can attempt to fix broken installations by installing missing dependencies. While it can be helpful, it's generally more reliable to ensure all prerequisites are installed beforehand.
+3.  **(Optional) Install Missing Dependencies:** This command can attempt to fix broken installations by installing missing dependencies. While it can be helpful, it's generally more reliable to ensure all prerequisites are installed beforehand.
 
     ```bash
     sudo apt install -f -y
