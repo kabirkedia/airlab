@@ -17,6 +17,7 @@
     *   [Launch](#launch)
     *   [Docker Commands](#docker-commands)
     *   [Version Control Commands](#vcs-commands)
+    *   [cd](#cd)
 *   [Workspace Structure](#workspace-structure)
     *   [Overview](#overview-1)
     *   [Directory Structure](#directory-structure)
@@ -538,6 +539,37 @@ airlab vcs status [OPTIONS]
 *   **Environment**: Requires `$AIRLAB_PATH` to be set.
 
 Detailed documentation is available [here](/usr/local/bin/docs/version-control-commands.md).
+
+---
+
+### cd
+
+This command changes the current working directory to a path relative to `$AIRLAB_PATH`. It works like the standard `cd` command but always starts from the airlab workspace root.
+
+> **Note:** `airlab cd` is implemented as a shell function (not a standalone script) because a subprocess cannot change the parent shell's working directory. The function is automatically loaded from the completion script at `/etc/bash_completion.d/airlab`.
+
+#### Usage
+
+```bash
+airlab cd [path]
+```
+
+#### Arguments
+
+*   `path`: A directory path relative to `$AIRLAB_PATH`. If omitted, changes to `$AIRLAB_PATH` itself.
+
+#### Quick Examples
+
+```bash
+airlab cd                   # cd to $AIRLAB_PATH
+airlab cd docker            # cd to $AIRLAB_PATH/docker
+airlab cd robot             # cd to $AIRLAB_PATH/robot
+airlab cd version_control   # cd to $AIRLAB_PATH/version_control
+```
+
+#### Tab Completion
+
+`airlab cd <TAB>` lists directories under `$AIRLAB_PATH`, and supports nested path completion (e.g., `airlab cd docker/<TAB>`).
 
 ---
 

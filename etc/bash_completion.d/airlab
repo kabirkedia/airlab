@@ -1,5 +1,36 @@
-# Bash completion for the airlab command
+# Bash completion and shell function for the airlab command
 # Installed to /etc/bash_completion.d/airlab
+
+# Shell function wrapper for airlab.
+# "cd" must run in the current shell (a subprocess cannot change the parent's
+# working directory), so we intercept it here and forward everything else to
+# the real /usr/local/bin/airlab binary.
+airlab() {
+    if [[ "${1:-}" == "cd" ]]; then
+        shift
+        local target="${AIRLAB_PATH:-}"
+        if [[ -z "$target" ]]; then
+            echo "Error: AIRLAB_PATH is not set. Run 'airlab setup local' first." >&2
+            return 1
+        fi
+        if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+            echo "Usage: airlab cd [path]"
+            echo ""
+            echo "Change directory to a path relative to \$AIRLAB_PATH ($AIRLAB_PATH)."
+            echo ""
+            echo "  airlab cd              # cd to \$AIRLAB_PATH"
+            echo "  airlab cd docker       # cd to \$AIRLAB_PATH/docker"
+            echo "  airlab cd robot        # cd to \$AIRLAB_PATH/robot"
+            return 0
+        fi
+        if [[ -n "$1" ]]; then
+            target="$target/$1"
+        fi
+        builtin cd "$target"
+    else
+        command airlab "$@"
+    fi
+}
 
 # Helper: read robot names from robot.conf
 _airlab_robot_names() {
@@ -96,6 +127,32 @@ _airlab_complete_repo_file_value() {
     compopt -o nospace
 }
 
+# Helper: complete directories under $AIRLAB_PATH for "airlab cd".
+# Works like system cd — only shows directories, supports nested paths.
+_airlab_complete_cd() {
+    local airlab_dir="${AIRLAB_PATH:-}"
+    [[ -d "$airlab_dir" ]] || return
+
+    local typed="$cur"
+
+    local search_dir="$airlab_dir"
+    if [[ "$typed" == */* ]]; then
+        search_dir="$airlab_dir/${typed%/*}"
+    fi
+
+    [[ -d "$search_dir" ]] || return
+
+    local entry rel_path
+    while IFS= read -r -d '' entry; do
+        [[ -d "$entry" ]] || continue
+        rel_path="${entry#"$airlab_dir"/}"
+        [[ "$rel_path" == "$typed"* ]] || continue
+        COMPREPLY+=( "${rel_path}/" )
+    done < <(find "$search_dir" -mindepth 1 -maxdepth 1 -print0 2>/dev/null | sort -z)
+
+    compopt -o nospace
+}
+
 _airlab_completions() {
     local cur prev words cword
     _init_completion || return
@@ -114,7 +171,7 @@ _airlab_completions() {
 
     # Top-level commands
     local commands="greet setup ssh auth ping sync launch set_env set_hosts \
-docker-build docker-up docker-join docker-list vcs --help --version"
+docker-build docker-up docker-join docker-list vcs cd --help --version"
 
     # Position 1: complete the sub-command
     if [[ $cword -eq 1 ]]; then
@@ -211,6 +268,11 @@ docker-build docker-up docker-join docker-list vcs --help --version"
 
         docker-list)
             COMPREPLY=( $(compgen -W "--system= --images --password --help" -- "$cur") )
+            ;;
+
+        cd)
+            _airlab_complete_cd
+            return
             ;;
 
         vcs)
