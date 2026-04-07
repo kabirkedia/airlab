@@ -8,6 +8,7 @@
 
 *   [Key Features](#key-features)
 *   [Installation](#installation)
+*   [Tab Auto-Completion](#tab-auto-completion)
 *   [Commands](#commands)
     *   [Setup](#setup)
     *   [SSH](#ssh)
@@ -90,6 +91,26 @@
 
 ### Post-Installation Notes
 After installing airlab you can run the command to setup the environment `airlab setup local or <robot>`
+
+### Tab Auto-Completion
+
+`airlab` ships with Bash tab-completion out of the box. The completion script is installed to `/etc/bash_completion.d/airlab` as part of the Debian package and is automatically sourced by new shell sessions.
+
+**What it completes:**
+
+*   **Sub-commands:** `airlab <TAB>` lists all available commands (`setup`, `ssh`, `sync`, `vcs`, etc.).
+*   **Options and flags:** `airlab sync mt001 <TAB>` lists `--dry-run`, `--delete`, `--path=`, `--exclude=`, etc.
+*   **Robot names:** Commands that take a robot name (e.g., `airlab ssh <TAB>`) complete from the entries in `$AIRLAB_PATH/robot/robot.conf`.
+*   **Paths:** `airlab sync <robot> --path=<TAB>` and `--exclude=<TAB>` complete with files and directories under `$AIRLAB_PATH`.
+*   **Docker containers:** `airlab docker-join --name=<TAB>` completes with currently running Docker container names.
+*   **VCS repo files:** `airlab vcs init --repo_file=<TAB>` completes with `.yaml`/`.yml` files (and subdirectories) under `$AIRLAB_PATH/version_control/`.
+*   **VCS sub-commands:** `airlab vcs <TAB>` lists `init`, `pull`, `push`, `status`, and `update`, each with their own option completions.
+
+To manually reload the completion script (e.g., during development):
+
+```bash
+source /etc/bash_completion.d/airlab
+```
 
 ## Commands
 
