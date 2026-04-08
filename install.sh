@@ -100,12 +100,24 @@ fi
 cd "$SCRIPT_DIR"
 bash install_dependencies_ubuntu24.sh
 
-# Create the DEB package.
-cd "$SCRIPT_DIR"/..
-dpkg-deb --build airlab
+# Create the DEB package from a clean staging directory so that only
+# DEBIAN/, etc/, and usr/ end up in the package. Building directly from
+# the repo root would package stray files (README.md, install.sh, test/,
+# .git/, ...) and install them to / on the target system.
+STAGING_DIR="$(mktemp -d)"
+# Sanity-check STAGING_DIR before arming the rm -rf trap: it must be a
+# non-empty, absolute path pointing at an existing directory, and must
+# not be the filesystem root.
+if [ -z "$STAGING_DIR" ] || [ ! -d "$STAGING_DIR" ] || [ "$STAGING_DIR" = "/" ] || [ "${STAGING_DIR#/}" = "$STAGING_DIR" ]; then
+    echo "Error: refusing to proceed — invalid staging directory: '$STAGING_DIR'"
+    exit 1
+fi
+trap 'rm -rf "$STAGING_DIR"' EXIT
+cp -a "$SCRIPT_DIR/DEBIAN" "$SCRIPT_DIR/etc" "$SCRIPT_DIR/usr" "$STAGING_DIR/"
+dpkg-deb --build "$STAGING_DIR" "$SCRIPT_DIR/../airlab.deb"
 
 # Install the DEB package.
-sudo dpkg -i airlab.deb
+sudo dpkg -i "$SCRIPT_DIR/../airlab.deb"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
