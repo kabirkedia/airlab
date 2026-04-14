@@ -30,6 +30,9 @@ Options:
   --here --check      Compare the current directory structure against AIRLAB_REPO_FILE's YAML.
   --here --from-scratch  Delete all YAML-defined repo folders and re-clone from scratch.
                          Only proceeds if --check finds no discrepancies (no missing, no extra).
+  --entry=NAME        Only initialize the single repository entry NAME from the YAML file.
+                      Valid with --repo_file or --here. Incompatible with --all, --check,
+                      and --from-scratch. Errors out if NAME is not present in the YAML.
   --help              Display this help message and exit.
 
 Dependencies:
@@ -226,29 +229,120 @@ PYEOF
     done
 }
 
+check_duplicate_urls() {
+    local yaml_file=$1
+
+    python3 - "$yaml_file" <<'PYEOF'
+import sys
+import yaml
+from collections import defaultdict
+
+yaml_file = sys.argv[1]
+
+with open(yaml_file, "r") as f:
+    data = yaml.safe_load(f)
+
+repos = (data or {}).get("repositories", {}) or {}
+
+url_to_names = defaultdict(list)
+for name, spec in repos.items():
+    if spec and spec.get("type") == "git":
+        url = spec.get("url")
+        if url:
+            url_to_names[url].append(name)
+
+duplicates = {url: names for url, names in url_to_names.items() if len(names) > 1}
+
+if duplicates:
+    print(f"Duplicate git repository URL(s) found in {yaml_file}:", file=sys.stderr)
+    for url, names in duplicates.items():
+        print(f"  {url}", file=sys.stderr)
+        for n in names:
+            print(f"    - {n}", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+}
+
+filter_yaml_entry() {
+    local yaml_file=$1
+    local entry=$2
+    local out_file=$3
+
+    python3 - "$yaml_file" "$entry" "$out_file" <<'PYEOF'
+import sys
+import yaml
+
+yaml_file, entry, out_file = sys.argv[1], sys.argv[2], sys.argv[3]
+
+with open(yaml_file, "r") as f:
+    data = yaml.safe_load(f) or {}
+
+repos = data.get("repositories", {}) or {}
+if entry not in repos:
+    print(f"Entry '{entry}' not found in {yaml_file}.", file=sys.stderr)
+    available = sorted(repos.keys())
+    if available:
+        print("Available entries:", file=sys.stderr)
+        for name in available:
+            print(f"  - {name}", file=sys.stderr)
+    sys.exit(1)
+
+data["repositories"] = {entry: repos[entry]}
+
+with open(out_file, "w") as f:
+    yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+PYEOF
+}
+
 process_repository() {
     local repo_dir=$1
     local yaml_file=$2
+    local entry=${3:-}
     local yaml_basename
     yaml_basename=$(basename "$yaml_file")
+
+    if ! check_duplicate_urls "$yaml_file"; then
+        log_error "Aborting: YAML file contains duplicate git repository URLs."
+        exit 1
+    fi
+
+    # If an entry filter is specified, produce a filtered YAML containing only
+    # that single repository entry, and import from it instead.
+    local import_yaml="$yaml_file"
+    local tmp_yaml=""
+    if [[ -n "$entry" ]]; then
+        tmp_yaml=$(mktemp --suffix=.yaml)
+        if ! filter_yaml_entry "$yaml_file" "$entry" "$tmp_yaml"; then
+            rm -f "$tmp_yaml"
+            log_error "Aborting: entry '$entry' not found in $yaml_file."
+            exit 1
+        fi
+        import_yaml="$tmp_yaml"
+        log_info "Restricting initialization to single entry: $entry"
+    fi
 
     log_info "Processing repository with YAML file: $yaml_file"
     mkdir -p "$repo_dir"
 
-    # Copy the YAML file to the target directory
-    cp "$yaml_file" "$repo_dir"
+    # Copy the (possibly filtered) YAML file to the target directory
+    cp "$import_yaml" "$repo_dir/$yaml_basename"
 
     # Initialize the workspace
     vcs import "$repo_dir" < "$repo_dir/$yaml_basename"
     cd "$repo_dir"
     vcs custom --git --args submodule update --init --recursive
 
-    # Clean up the YAML file in the target directory
+    # Clean up the YAML file in the target directory and any tempfile
     rm -f "$repo_dir/$yaml_basename"
+    [[ -n "$tmp_yaml" ]] && rm -f "$tmp_yaml"
 
-    # Record which YAML file was used to initialize this directory
-    echo "$yaml_basename" > "$repo_dir/AIRLAB_REPO_FILE"
-    log_info "Created AIRLAB_REPO_FILE in $repo_dir with content: $yaml_basename"
+    # Record which YAML file was used to initialize this directory.
+    # Only write the marker on a full init (no --entry), since a partial
+    # init does not fully describe the workspace.
+    if [[ -z "$entry" ]]; then
+        echo "$yaml_basename" > "$repo_dir/AIRLAB_REPO_FILE"
+        log_info "Created AIRLAB_REPO_FILE in $repo_dir with content: $yaml_basename"
+    fi
 }
 
 process_all_repositories() {
@@ -277,6 +371,7 @@ main() {
     HERE=false
     CHECK=false
     FROM_SCRATCH=false
+    ENTRY=""
 
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
@@ -298,6 +393,9 @@ main() {
                 ;;
             --from-scratch)
                 FROM_SCRATCH=true
+                ;;
+            --entry=*)
+                ENTRY="${1#--entry=}"
                 ;;
             --help)
                 show_usage
@@ -324,6 +422,23 @@ main() {
         exit 1
     fi
 
+    # --entry is only valid with --repo_file (default mode) or --here,
+    # and is incompatible with --all, --check, and --from-scratch.
+    if [[ -n "$ENTRY" ]]; then
+        if [[ "$ALL" == true ]]; then
+            log_error "--entry cannot be used with --all"
+            exit 1
+        fi
+        if [[ "$CHECK" == true ]]; then
+            log_error "--entry cannot be used with --check"
+            exit 1
+        fi
+        if [[ "$FROM_SCRATCH" == true ]]; then
+            log_error "--entry cannot be used with --from-scratch"
+            exit 1
+        fi
+    fi
+
     # Handle --here: read AIRLAB_REPO_FILE from PWD and treat it as --repo_file
     if [[ "$HERE" == true ]]; then
         local marker_file="$PWD/AIRLAB_REPO_FILE"
@@ -345,6 +460,12 @@ main() {
         if [[ "$CHECK" == true && "$FROM_SCRATCH" == false ]]; then
             check_repositories "$PWD" "$yaml_file"
             exit $?
+        fi
+
+        # If --entry, run a partial init restricted to that single entry
+        if [[ -n "$ENTRY" ]]; then
+            process_repository "$PWD" "$yaml_file" "$ENTRY"
+            exit 0
         fi
 
         # If --from-scratch, verify clean state, delete, and re-clone
@@ -384,7 +505,7 @@ main() {
         yaml_dir_path=$(extract_yaml_dir "$yaml_file")
         local final_dir="${REPO_DIR:-$yaml_dir_path}"
 
-        process_repository "$AIRLAB_PATH/$final_dir" "$yaml_file"
+        process_repository "$AIRLAB_PATH/$final_dir" "$yaml_file" "$ENTRY"
     fi
 }
 
