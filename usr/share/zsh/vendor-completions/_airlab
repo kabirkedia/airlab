@@ -1,0 +1,305 @@
+#compdef airlab
+#
+# Zsh completion for the airlab command.
+# Installed to /usr/share/zsh/vendor-completions/_airlab
+
+# Helper: read robot names from robot.conf
+_airlab_robot_names() {
+    local conf="${AIRLAB_PATH:-}/robot/robot.conf"
+    if [[ -f "$conf" ]]; then
+        sed -n 's/^\([A-Za-z0-9_-]\+\)=.*/\1/p' "$conf" 2>/dev/null
+    fi
+}
+
+# Completion action: robot names
+_airlab_complete_robots() {
+    local -a robots
+    robots=( ${(f)"$(_airlab_robot_names)"} )
+    compadd -- "${robots[@]}"
+}
+
+# Completion action: robot names + "local"
+_airlab_complete_targets() {
+    compadd -- local
+    _airlab_complete_robots
+}
+
+# Completion action: running Docker container names
+_airlab_complete_containers() {
+    local -a containers
+    containers=( ${(f)"$(docker ps --format '{{.Names}}' 2>/dev/null)"} )
+    compadd -- "${containers[@]}"
+}
+
+# Completion action: relative paths under $AIRLAB_PATH
+_airlab_complete_airlab_path() {
+    local airlab_dir="${AIRLAB_PATH:-}"
+    [[ -d "$airlab_dir" ]] || return
+    local typed="$PREFIX"
+    local search_dir="$airlab_dir"
+    if [[ "$typed" == */* ]]; then
+        search_dir="$airlab_dir/${typed%/*}"
+    fi
+    [[ -d "$search_dir" ]] || return
+    local entry rel
+    for entry in "$search_dir"/*(N); do
+        rel="${entry#$airlab_dir/}"
+        [[ "$rel" == "$typed"* ]] || continue
+        if [[ -d "$entry" ]]; then
+            compadd -S '/' -q -- "$rel"
+        else
+            compadd -- "$rel"
+        fi
+    done
+}
+
+# Completion action: YAML files under $AIRLAB_PATH/version_control
+_airlab_complete_repo_file() {
+    local vc_dir="${AIRLAB_PATH:-}/version_control"
+    [[ -d "$vc_dir" ]] || return
+    local typed="$PREFIX"
+    local search_dir="$vc_dir"
+    if [[ "$typed" == */* ]]; then
+        search_dir="$vc_dir/${typed%/*}"
+    fi
+    [[ -d "$search_dir" ]] || return
+    local entry rel
+    for entry in "$search_dir"/*(N); do
+        rel="${entry#$vc_dir/}"
+        [[ "$rel" == "$typed"* ]] || continue
+        if [[ -d "$entry" ]]; then
+            compadd -S '/' -q -- "$rel"
+        elif [[ "$entry" == *.yaml || "$entry" == *.yml ]]; then
+            compadd -- "$rel"
+        fi
+    done
+}
+
+# Completion action: directories under $AIRLAB_PATH (for "airlab cd")
+_airlab_complete_cd() {
+    local airlab_dir="${AIRLAB_PATH:-}"
+    [[ -d "$airlab_dir" ]] || return
+    local typed="${words[CURRENT]}"
+    local search_dir="$airlab_dir"
+    if [[ "$typed" == */* ]]; then
+        search_dir="$airlab_dir/${typed%/*}"
+    fi
+    [[ -d "$search_dir" ]] || return
+    local -a dirs
+    dirs=( "$search_dir"/*(N/:t) )
+    if [[ "$typed" == */* ]]; then
+        dirs=( "${dirs[@]/#/${typed%/*}/}" )
+    fi
+    compadd -S '/' -q -- "${dirs[@]}"
+}
+
+_airlab_vcs() {
+    local -a vcs_commands
+    vcs_commands=(
+        'init:Clone repos from YAML'
+        'pull:Pull repos'
+        'push:Push repos'
+        'status:Show repo status'
+        'update:Pull + init missing + pull again'
+    )
+
+    local state line context
+    typeset -A opt_args
+
+    _arguments -C \
+        '1:vcs command:->vcscmd' \
+        '*::vcs args:->vcsargs'
+
+    case "$state" in
+        vcscmd)
+            _describe 'vcs command' vcs_commands
+            compadd -- --help
+            ;;
+        vcsargs)
+            case "${line[1]}" in
+                init)
+                    _arguments -s \
+                        '--repo_file=[YAML repo file]:repo file:_airlab_complete_repo_file' \
+                        '--path=[path]:path:_airlab_complete_airlab_path' \
+                        '--all[init all repos]' \
+                        '--here[init in current directory]' \
+                        '--check[check only]' \
+                        '--from-scratch[init from scratch]' \
+                        '--help[show help]'
+                    ;;
+                pull)
+                    _arguments -s \
+                        '--no-rebase[do not rebase]' \
+                        '--help[show help]'
+                    ;;
+                push|update)
+                    _arguments -s '--help[show help]'
+                    ;;
+                status)
+                    _arguments -s \
+                        '--show-branch[show branch info]' \
+                        '--help[show help]'
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_airlab() {
+    local -a commands
+    commands=(
+        'greet:Say hello and confirm the command is set up correctly'
+        'setup:Set up the airlab environment'
+        'ssh:Connect to a remote machine using SSH'
+        'auth:Install SSH public key on a remote robot'
+        'ping:Ping a remote robot'
+        'sync:Synchronize code to a remote machine'
+        'launch:Launch a robot configuration'
+        'set_env:Set environment variables on local or remote machine'
+        'set_hosts:Set hostnames for robots or local environment'
+        'docker-build:Build Docker images using docker-compose'
+        'docker-up:Start Docker containers using docker-compose'
+        'docker-join:Attach to a running Docker container'
+        'docker-list:List active Docker containers'
+        'vcs:Manage multiple repositories with common git functions'
+        'cd:Change directory relative to \$AIRLAB_PATH'
+    )
+
+    local state line
+    typeset -A opt_args
+
+    # Use -C to set up state-based dispatch. This shifts words/CURRENT
+    # for the '*::' rest-args so that subcommand handlers see words[1]
+    # as the subcommand itself, not "airlab".
+    _arguments -C \
+        '1:airlab command:->cmd' \
+        '*::args:->args'
+
+    case "$state" in
+        cmd)
+            _describe 'airlab command' commands
+            compadd -- --help --version
+            ;;
+        args)
+            local cmd="${line[1]}"
+            case "$cmd" in
+                setup)
+                    if (( CURRENT == 1 )); then
+                        _airlab_complete_targets
+                        compadd -- --help
+                        return
+                    fi
+                    _arguments -s \
+                        '--path=[path]:path:_airlab_complete_airlab_path' \
+                        '--force[force setup]' \
+                        '--password[use password auth]' \
+                        '--help[show help]'
+                    ;;
+
+                ssh)
+                    if (( CURRENT == 1 )); then
+                        _airlab_complete_robots
+                        compadd -- --help
+                        return
+                    fi
+                    _arguments -s \
+                        '--password[use password auth]' \
+                        '--help[show help]'
+                    ;;
+
+                auth|ping)
+                    if (( CURRENT == 1 )); then
+                        _airlab_complete_robots
+                        compadd -- --help
+                        return
+                    fi
+                    _arguments -s '--help[show help]'
+                    ;;
+
+                sync)
+                    if (( CURRENT == 1 )); then
+                        _airlab_complete_robots
+                        compadd -- --help
+                        return
+                    fi
+                    _arguments -s \
+                        '--dry-run[dry run]' \
+                        '--delete[delete extraneous files]' \
+                        '--path=[path]:path:_airlab_complete_airlab_path' \
+                        '--exclude=[exclude pattern]:exclude:_airlab_complete_airlab_path' \
+                        '--time[show timing]' \
+                        '--progress[show progress]' \
+                        '--password[use password auth]' \
+                        '--help[show help]'
+                    ;;
+
+                launch)
+                    if (( CURRENT == 1 )); then
+                        _airlab_complete_targets
+                        compadd -- --help
+                        return
+                    fi
+                    _arguments -s \
+                        '--yaml_file=[YAML file]:yaml file:' \
+                        '--stop[stop launch]' \
+                        '--password[use password auth]' \
+                        '--help[show help]'
+                    ;;
+
+                set_env)
+                    if (( CURRENT == 1 )); then
+                        _airlab_complete_targets
+                        compadd -- --help -h
+                        return
+                    fi
+                    _arguments -s \
+                        '--password[use password auth]' \
+                        '--help[show help]' \
+                        '-h[show help]'
+                    ;;
+
+                docker-build)
+                    _arguments -s \
+                        '--system=[system name]:system:' \
+                        '--compose=[compose file]:compose file:' \
+                        '--password[use password auth]' \
+                        '--help[show help]'
+                    ;;
+
+                docker-up)
+                    _arguments -s \
+                        '--system=[system name]:system:' \
+                        '--compose=[compose file]:compose file:' \
+                        '--password[use password auth]' \
+                        '--help[show help]'
+                    ;;
+
+                docker-join)
+                    _arguments -s \
+                        '--system=[system name]:system:' \
+                        '--name=[container name]:container:_airlab_complete_containers' \
+                        '--password[use password auth]' \
+                        '--help[show help]'
+                    ;;
+
+                docker-list)
+                    _arguments -s \
+                        '--system=[system name]:system:' \
+                        '--images[list images]' \
+                        '--password[use password auth]' \
+                        '--help[show help]'
+                    ;;
+
+                cd)
+                    _airlab_complete_cd
+                    ;;
+
+                vcs)
+                    _airlab_vcs
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_airlab "$@"

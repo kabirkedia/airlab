@@ -5,4 +5,12 @@ chmod +x /usr/local/bin/airlab
 chmod +x /usr/local/bin/cmds/*
 chmod +x /usr/local/bin/cmds/version-control/*
 
+# Ensure zsh completion and shell function files are readable
+if [ -f /usr/share/zsh/vendor-completions/_airlab ]; then
+    chmod 644 /usr/share/zsh/vendor-completions/_airlab
+fi
+if [ -f /etc/airlab/airlab.zsh ]; then
+    chmod 644 /etc/airlab/airlab.zsh
+fi
+
 echo "Succesfully setup AIRLAB on your system!✅"
