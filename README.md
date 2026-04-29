@@ -12,6 +12,7 @@
 *   [Commands](#commands)
     *   [Setup](#setup)
     *   [SSH](#ssh)
+    *   [Auth](#auth)
     *   [set_env](#set_env)
     *   [Sync](#sync)
     *   [Launch](#launch)
@@ -240,6 +241,44 @@ airlab ssh mt001  # SSH into mt001, as defined in robot.conf
 2.  "Workspace not found": Verify the `robot_info.yaml` configuration.
 
 *Note: Further detailed documentation is omitted due to its relative simplicity.*
+
+---
+
+### Auth
+
+Installs a local SSH public key on a remote robot's `authorized_keys` file to enable password-less SSH authentication.
+
+#### Usage
+
+```bash
+airlab auth <robot_name>
+```
+
+#### Arguments
+
+*   `<robot_name>`: Name of the robot (must be defined in `robot.conf`).
+
+#### Options
+
+*   `--help`: Show help message.
+
+#### Quick Examples
+
+```bash
+airlab auth mt001  # Copy your SSH public key to mt001
+```
+
+#### Features
+
+*   Automatically discovers SSH public keys in `~/.ssh/`.
+*   If multiple keys exist, presents an interactive selection menu.
+*   Checks for duplicate keys before installing (won't add a key that's already present).
+*   Verifies key-based SSH authentication works after installation.
+
+#### Dependencies
+
+*   `ssh`
+*   `sshpass`
 
 ---
 
