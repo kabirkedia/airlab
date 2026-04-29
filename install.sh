@@ -2,22 +2,163 @@
 
 set -e  # Exit immediately if a command exits with a non-zero status
 
+# Parse command line arguments.
+VENV_MODE=""  # "", "override", "no-override", or "skip"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --override-venv)
+            VENV_MODE="override"
+            shift
+            ;;
+        --no-override-venv)
+            VENV_MODE="no-override"
+            shift
+            ;;
+        --skip-venv)
+            VENV_MODE="skip"
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--override-venv | --no-override-venv | --skip-venv]"
+            exit 1
+            ;;
+    esac
+done
+
+# Get the directory of the current script.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Update package lists
 sudo apt update
 
 # Install apt dependencies
 sudo apt install -y \
-    tmux \
-    tmuxp \
     python3-pip \
-    openssh-server \
-    sshpass \
-    ssh-askpass \
-    git \
-    rsync \
+    python3-venv
 
-# Install pip dependencies
-pip3 install --upgrade pip
-sudo pip3 install pyyaml vcstool
+# Handle venv setup.
+VENV_DIR="$HOME/VENVs"
+VENV_ACTION=""  # "create", "reuse", or "skip"
 
-echo "Installation complete!"
+if [ "$VENV_MODE" = "skip" ]; then
+    # Expect the user to already be in a venv.
+    if [ -z "$VIRTUAL_ENV" ]; then
+        echo "Error: --skip-venv requires an active virtual environment, but none is detected."
+        exit 1
+    fi
+    echo "Using current virtual environment: $VIRTUAL_ENV"
+    VENV_ACTION="skip"
+else
+    mkdir -p "$VENV_DIR"
+
+    # Test if the virtual environment already exists.
+    if [ -d "$VENV_DIR/airlab" ]; then
+        if [ "$VENV_MODE" = "override" ]; then
+            echo "Removing existing virtual environment 'airlab'..."
+            rm -rf "$VENV_DIR/airlab"
+            VENV_ACTION="create"
+        elif [ "$VENV_MODE" = "no-override" ]; then
+            echo "Error: Virtual environment 'airlab' already exists."
+            exit 1
+        else
+            # Interactive prompt.
+            echo "Virtual environment 'airlab' already exists at $VENV_DIR/airlab."
+            read -rp "Remove and re-create it? [y/N] " answer
+            case "$answer" in
+                [yY]|[yY][eE][sS])
+                    echo "Removing existing virtual environment 'airlab'..."
+                    rm -rf "$VENV_DIR/airlab"
+                    VENV_ACTION="create"
+                    ;;
+                *)
+                    echo "Keeping existing virtual environment. Skipping venv setup."
+                    VENV_ACTION="reuse"
+                    ;;
+            esac
+        fi
+    else
+        VENV_ACTION="create"
+    fi
+
+    if [ "$VENV_ACTION" = "create" ]; then
+        python3 -m venv "$VENV_DIR/airlab"
+        source "$VENV_DIR/airlab/bin/activate"
+        pip install --upgrade pip
+        pip install ipython ipdb
+        # Only add to .bashrc if not already present.
+        if ! grep -q 'source ~/VENVs/airlab/bin/activate' ~/.bashrc; then
+            echo 'source ~/VENVs/airlab/bin/activate' >> ~/.bashrc
+        fi
+        # Also add to .zshrc if zsh is installed and .zshrc exists or zsh is the login shell.
+        if command -v zsh >/dev/null 2>&1 && [ -f ~/.zshrc ]; then
+            if ! grep -q 'source ~/VENVs/airlab/bin/activate' ~/.zshrc; then
+                echo 'source ~/VENVs/airlab/bin/activate' >> ~/.zshrc
+            fi
+        fi
+    elif [ "$VENV_ACTION" = "reuse" ]; then
+        # Activate the existing venv so install_dependencies_ubuntu24.sh sees $VIRTUAL_ENV.
+        source "$VENV_DIR/airlab/bin/activate"
+    fi
+fi
+
+# Go back to the script directory and run the Ubuntu 24 dependencies installation script.
+cd "$SCRIPT_DIR"
+bash install_dependencies_ubuntu24.sh
+
+# Create the DEB package from a clean staging directory so that only
+# DEBIAN/, etc/, and usr/ end up in the package. Building directly from
+# the repo root would package stray files (README.md, install.sh, test/,
+# .git/, ...) and install them to / on the target system.
+STAGING_DIR="$(mktemp -d)"
+# Sanity-check STAGING_DIR before arming the rm -rf trap: it must be a
+# non-empty, absolute path pointing at an existing directory, and must
+# not be the filesystem root.
+if [ -z "$STAGING_DIR" ] || [ ! -d "$STAGING_DIR" ] || [ "$STAGING_DIR" = "/" ] || [ "${STAGING_DIR#/}" = "$STAGING_DIR" ]; then
+    echo "Error: refusing to proceed — invalid staging directory: '$STAGING_DIR'"
+    exit 1
+fi
+trap 'rm -rf "$STAGING_DIR"' EXIT
+cp -a "$SCRIPT_DIR/DEBIAN" "$SCRIPT_DIR/etc" "$SCRIPT_DIR/usr" "$STAGING_DIR/"
+dpkg-deb --build "$STAGING_DIR" "$SCRIPT_DIR/../airlab.deb"
+
+# Install the DEB package.
+sudo dpkg -i "$SCRIPT_DIR/../airlab.deb"
+
+# Set up zsh integration if zsh is installed.
+if command -v zsh >/dev/null 2>&1 && [ -f ~/.zshrc ]; then
+    # Source the airlab shell function wrapper for "airlab cd" support.
+    if ! grep -q 'source /etc/airlab/airlab.zsh' ~/.zshrc; then
+        echo '# Airlab shell function (enables "airlab cd")' >> ~/.zshrc
+        echo 'source /etc/airlab/airlab.zsh' >> ~/.zshrc
+    fi
+fi
+
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BOLD='\033[1m'
+RESET='\033[0m'
+
+echo ""
+echo -e "${GREEN}========================================${RESET}"
+echo -e "${GREEN}    Installation complete!${RESET}"
+echo -e "${GREEN}========================================${RESET}"
+echo ""
+if [ "$VENV_ACTION" = "skip" ]; then
+    echo -e "${YELLOW}${BOLD}>>> AirLab was installed using your current venv:${RESET}"
+    echo ""
+    echo -e "    ${BOLD}$VIRTUAL_ENV${RESET}"
+    echo ""
+    echo -e "${YELLOW}${BOLD}>>> Make sure this venv is active when using AirLab.${RESET}"
+else
+    echo -e "${YELLOW}${BOLD}>>> To start using AirLab, open a new terminal or run:${RESET}"
+    echo ""
+    echo -e "    ${BOLD}source ~/VENVs/airlab/bin/activate${RESET}"
+fi
+if command -v zsh >/dev/null 2>&1 && [ -f ~/.zshrc ]; then
+    echo ""
+    echo -e "${GREEN}    Zsh support has been configured.${RESET}"
+    echo -e "${GREEN}    Completions and shell functions will be available in new zsh sessions.${RESET}"
+fi
+echo ""
+echo -e "${GREEN}========================================${RESET}"

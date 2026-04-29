@@ -1,0 +1,319 @@
+# Bash completion and shell function for the airlab command
+# Installed to /etc/bash_completion.d/airlab
+
+# Shell function wrapper for airlab.
+# "cd" must run in the current shell (a subprocess cannot change the parent's
+# working directory), so we intercept it here and forward everything else to
+# the real /usr/local/bin/airlab binary.
+airlab() {
+    if [[ "${1:-}" == "cd" ]]; then
+        shift
+        local target="${AIRLAB_PATH:-}"
+        if [[ -z "$target" ]]; then
+            echo "Error: AIRLAB_PATH is not set. Run 'airlab setup local' first." >&2
+            return 1
+        fi
+        if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+            echo "Usage: airlab cd [path]"
+            echo ""
+            echo "Change directory to a path relative to \$AIRLAB_PATH ($AIRLAB_PATH)."
+            echo ""
+            echo "  airlab cd              # cd to \$AIRLAB_PATH"
+            echo "  airlab cd docker       # cd to \$AIRLAB_PATH/docker"
+            echo "  airlab cd robot        # cd to \$AIRLAB_PATH/robot"
+            return 0
+        fi
+        if [[ -n "$1" ]]; then
+            target="$target/$1"
+        fi
+        builtin cd "$target"
+    else
+        command airlab "$@"
+    fi
+}
+
+# Helper: read robot names from robot.conf
+_airlab_robot_names() {
+    local conf="${AIRLAB_PATH:-}/robot/robot.conf"
+    if [[ -f "$conf" ]]; then
+        # Extract robot names (lines like "name=user@host", ignoring comments/blanks)
+        sed -n 's/^\([A-Za-z0-9_-]\+\)=.*/\1/p' "$conf" 2>/dev/null
+    fi
+}
+
+# Helper: generate robot names plus "local"
+_airlab_targets() {
+    echo "local"
+    _airlab_robot_names
+}
+
+# Helper: list running Docker container names
+_airlab_docker_containers() {
+    docker ps --format '{{.Names}}' 2>/dev/null
+}
+
+# Helper: when "=" is in COMP_WORDBREAKS, bash splits "--opt=val" into
+# separate tokens. Two cases arise:
+#   Case A: "--path=val<TAB>" → words=[..., "--path", "=", "val"], prev="=", cur="val"
+#   Case B: "--path=<TAB>"    → words=[..., "--path", "="],        prev="--path", cur="="
+# This function returns the option name (e.g. "--path") for either case,
+# or empty string if no "=" split is detected.
+_airlab_get_eq_opt() {
+    # Case A: typed something after "="
+    if [[ "$prev" == "=" && $cword -ge 2 ]]; then
+        echo "${words[$cword-2]}"
+    # Case B: nothing after "=", cur is literally "="
+    elif [[ "$cur" == "=" && "$prev" == --* ]]; then
+        echo "$prev"
+    fi
+}
+
+# Helper: complete relative paths (files and directories) under $AIRLAB_PATH.
+# cur is the partial value typed so far (after the "=").
+_airlab_complete_path_value() {
+    local airlab_dir="${AIRLAB_PATH:-}"
+    [[ -d "$airlab_dir" ]] || return
+
+    local typed="$cur"
+
+    local search_dir="$airlab_dir"
+    if [[ "$typed" == */* ]]; then
+        search_dir="$airlab_dir/${typed%/*}"
+    fi
+
+    [[ -d "$search_dir" ]] || return
+
+    local entry rel_path
+    while IFS= read -r -d '' entry; do
+        rel_path="${entry#"$airlab_dir"/}"
+        [[ "$rel_path" == "$typed"* ]] || continue
+
+        if [[ -d "$entry" ]]; then
+            COMPREPLY+=( "${rel_path}/" )
+        else
+            COMPREPLY+=( "${rel_path}" )
+        fi
+    done < <(find "$search_dir" -mindepth 1 -maxdepth 1 -print0 2>/dev/null | sort -z)
+
+    compopt -o nospace
+}
+
+# Helper: complete YAML files (.yaml/.yml) under $AIRLAB_PATH/version_control.
+# Supports subdirectories. cur is the partial value typed so far (after the "=").
+_airlab_complete_repo_file_value() {
+    local vc_dir="${AIRLAB_PATH:-}/version_control"
+    [[ -d "$vc_dir" ]] || return
+
+    local typed="$cur"
+
+    local search_dir="$vc_dir"
+    if [[ "$typed" == */* ]]; then
+        search_dir="$vc_dir/${typed%/*}"
+    fi
+    [[ -d "$search_dir" ]] || return
+
+    local entry rel_path
+    while IFS= read -r -d '' entry; do
+        rel_path="${entry#"$vc_dir"/}"
+        [[ "$rel_path" == "$typed"* ]] || continue
+
+        if [[ -d "$entry" ]]; then
+            COMPREPLY+=( "${rel_path}/" )
+        elif [[ "$entry" == *.yaml || "$entry" == *.yml ]]; then
+            COMPREPLY+=( "${rel_path}" )
+        fi
+    done < <(find "$search_dir" -mindepth 1 -maxdepth 1 -print0 2>/dev/null | sort -z)
+
+    compopt -o nospace
+}
+
+# Helper: complete directories under $AIRLAB_PATH for "airlab cd".
+# Works like system cd — only shows directories, supports nested paths.
+_airlab_complete_cd() {
+    local airlab_dir="${AIRLAB_PATH:-}"
+    [[ -d "$airlab_dir" ]] || return
+
+    local typed="$cur"
+
+    local search_dir="$airlab_dir"
+    if [[ "$typed" == */* ]]; then
+        search_dir="$airlab_dir/${typed%/*}"
+    fi
+
+    [[ -d "$search_dir" ]] || return
+
+    local entry rel_path
+    while IFS= read -r -d '' entry; do
+        [[ -d "$entry" ]] || continue
+        rel_path="${entry#"$airlab_dir"/}"
+        [[ "$rel_path" == "$typed"* ]] || continue
+        COMPREPLY+=( "${rel_path}/" )
+    done < <(find "$search_dir" -mindepth 1 -maxdepth 1 -print0 2>/dev/null | sort -z)
+
+    compopt -o nospace
+}
+
+_airlab_completions() {
+    local cur prev words cword
+    _init_completion || return
+
+    # Detect "--opt=value" splitting caused by "=" in COMP_WORDBREAKS.
+    #   Case A: "--path=doc<TAB>" → prev="=", cur="doc"
+    #   Case B: "--path=<TAB>"    → prev="--path", cur="="
+    # After this block, eq_opt holds the option name (e.g. "--path") and
+    # cur holds the typed value (possibly empty) for both cases.
+    local eq_opt
+    eq_opt=$(_airlab_get_eq_opt)
+    if [[ -n "$eq_opt" && "$cur" == "=" ]]; then
+        # Case B: normalize cur to empty so helpers match everything
+        cur=""
+    fi
+
+    # Top-level commands
+    local commands="greet setup ssh auth ping sync launch set_env set_hosts \
+docker-build docker-up docker-join docker-list vcs cd --help --version"
+
+    # Position 1: complete the sub-command
+    if [[ $cword -eq 1 ]]; then
+        COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
+        return
+    fi
+
+    local cmd="${words[1]}"
+
+    case "$cmd" in
+        setup)
+            # Position 2: target (local or robot name)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "$(_airlab_targets) --help" -- "$cur") )
+                return
+            fi
+            # Remaining positions: options
+            if [[ "$cur" == --* ]]; then
+                COMPREPLY=( $(compgen -W "--path= --force --password --help" -- "$cur") )
+            fi
+            ;;
+
+        ssh)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "$(_airlab_robot_names) --help" -- "$cur") )
+                return
+            fi
+            COMPREPLY=( $(compgen -W "--password --help" -- "$cur") )
+            ;;
+
+        auth)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "$(_airlab_robot_names) --help" -- "$cur") )
+                return
+            fi
+            COMPREPLY=( $(compgen -W "--help" -- "$cur") )
+            ;;
+
+        ping)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "$(_airlab_robot_names) --help" -- "$cur") )
+                return
+            fi
+            COMPREPLY=( $(compgen -W "--help" -- "$cur") )
+            ;;
+
+        sync)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "$(_airlab_robot_names) --help" -- "$cur") )
+                return
+            fi
+            # Complete paths under $AIRLAB_PATH for --path= and --exclude=
+            if [[ "$eq_opt" == "--path" || "$eq_opt" == "--exclude" ]]; then
+                _airlab_complete_path_value
+                return
+            fi
+            COMPREPLY=( $(compgen -W "--dry-run --delete --path= --exclude= --time --progress --password --help" -- "$cur") )
+            ;;
+
+        launch)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "$(_airlab_targets) --help" -- "$cur") )
+                return
+            fi
+            COMPREPLY=( $(compgen -W "--yaml_file= --stop --password --help" -- "$cur") )
+            ;;
+
+        set_env)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "$(_airlab_targets) --help -h" -- "$cur") )
+                return
+            fi
+            # Position 4+: options after the ENV_VARIABLE argument
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=( $(compgen -W "--password --help -h" -- "$cur") )
+            fi
+            ;;
+
+        docker-build)
+            COMPREPLY=( $(compgen -W "--system= --compose= --password --help" -- "$cur") )
+            ;;
+
+        docker-up)
+            COMPREPLY=( $(compgen -W "--system= --compose= --password --help" -- "$cur") )
+            ;;
+
+        docker-join)
+            if [[ "$eq_opt" == "--name" ]]; then
+                COMPREPLY=( $(compgen -W "$(_airlab_docker_containers)" -- "$cur") )
+                return
+            fi
+            COMPREPLY=( $(compgen -W "--system= --name= --password --help" -- "$cur") )
+            ;;
+
+        docker-list)
+            COMPREPLY=( $(compgen -W "--system= --images --password --help" -- "$cur") )
+            ;;
+
+        cd)
+            _airlab_complete_cd
+            return
+            ;;
+
+        vcs)
+            local vcs_commands="init pull push status update --help"
+
+            # Position 2: vcs sub-command
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "$vcs_commands" -- "$cur") )
+                return
+            fi
+
+            local vcs_cmd="${words[2]}"
+
+            case "$vcs_cmd" in
+                init)
+                    if [[ "$eq_opt" == "--repo_file" ]]; then
+                        _airlab_complete_repo_file_value
+                        return
+                    fi
+                    COMPREPLY=( $(compgen -W "--repo_file= --path= --all --here --check --from-scratch --help" -- "$cur") )
+                    ;;
+                pull)
+                    COMPREPLY=( $(compgen -W "--no-rebase --help" -- "$cur") )
+                    ;;
+                push)
+                    COMPREPLY=( $(compgen -W "--help" -- "$cur") )
+                    ;;
+                status)
+                    COMPREPLY=( $(compgen -W "--show-branch --help" -- "$cur") )
+                    ;;
+                update)
+                    COMPREPLY=( $(compgen -W "--help" -- "$cur") )
+                    ;;
+            esac
+            ;;
+    esac
+
+    # For options that end with '=', prevent bash from appending a space
+    if [[ ${#COMPREPLY[@]} -eq 1 && "${COMPREPLY[0]}" == *= ]]; then
+        compopt -o nospace
+    fi
+}
+
+complete -F _airlab_completions airlab

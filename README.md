@@ -8,14 +8,17 @@
 
 *   [Key Features](#key-features)
 *   [Installation](#installation)
+*   [Tab Auto-Completion](#tab-auto-completion)
 *   [Commands](#commands)
     *   [Setup](#setup)
     *   [SSH](#ssh)
+    *   [Auth](#auth)
     *   [set_env](#set_env)
     *   [Sync](#sync)
     *   [Launch](#launch)
     *   [Docker Commands](#docker-commands)
     *   [Version Control Commands](#vcs-commands)
+    *   [cd](#cd)
 *   [Workspace Structure](#workspace-structure)
     *   [Overview](#overview-1)
     *   [Directory Structure](#directory-structure)
@@ -44,15 +47,6 @@
 
 2.  **NVIDIA Container Toolkit:** Install the NVIDIA Container Toolkit according to the [official NVIDIA documentation](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). This also requires the CUDA Toolkit and NVIDIA Driver, which can be found [here](https://developer.nvidia.com/cuda-downloads).
 
-3.  **Other Dependencies:** Install the following dependencies using `apt`:
-
-    ```bash
-    sudo apt-get update
-    sudo apt-get install -y curl dpkg-dev git lsb-release openssh-server python3-pip rsync sshpass tmux tmuxp
-    ```
-
-    Alternatively, run the included `install.sh` script.
-
 ### Installation Steps
 
 1.  **Clone the Repository:**
@@ -61,27 +55,37 @@
     git clone https://github.com/kabirkedia/airlab.git
     ```
 
-2.  **Set File Permissions:**  Ensure all files are executable:
+2.  **Run the install script:**
 
     ```bash
-    chmod -R a+rX airlab/
+    cd airlab
+    ./install.sh
     ```
 
-    *Note:*  The goal is to grant execute permissions to all files within the `airlab` directory. Alternative methods to achieve this are acceptable.
+    The install script handles the full installation process:
+    -   Installs apt dependencies (`python3-pip`, `python3-venv`, etc.)
+    -   Creates a Python virtual environment at `~/VENVs/airlab`
+    -   Installs Python dependencies (`pyyaml`, `vcstool`, etc.)
+    -   Builds and installs the `airlab` Debian package
 
-3.  **Build the Debian Package:**
+    **Virtual environment options:**
+
+    If the `~/VENVs/airlab` virtual environment already exists, the script will prompt you to remove and re-create it or keep the existing one. You can also control this behavior with command-line flags:
 
     ```bash
-    dpkg-deb --build airlab
+    # Always remove and re-create the venv (no prompt)
+    ./install.sh --override-venv
+
+    # Error out if the venv already exists (no prompt)
+    ./install.sh --no-override-venv
+
+    # Skip venv creation entirely — use whatever venv is currently active
+    ./install.sh --skip-venv
     ```
 
-4.  **Install `airlab`:**
+    The `--skip-venv` option is useful when you manage your own virtual environment (e.g., conda, poetry, or a shared team venv). It requires that a virtual environment is already active in the current terminal session. Python dependencies will be installed into that active venv instead of creating `~/VENVs/airlab`.
 
-    ```bash
-    sudo dpkg -i airlab.deb
-    ```
-
-5.  **(Optional) Install Missing Dependencies:** This command can attempt to fix broken installations by installing missing dependencies. While it can be helpful, it's generally more reliable to ensure all prerequisites are installed beforehand.
+3.  **(Optional) Install Missing Dependencies:** This command can attempt to fix broken installations by installing missing dependencies. While it can be helpful, it's generally more reliable to ensure all prerequisites are installed beforehand.
 
     ```bash
     sudo apt install -f -y
@@ -89,6 +93,35 @@
 
 ### Post-Installation Notes
 After installing airlab you can run the command to setup the environment `airlab setup local or <robot>`
+
+### Tab Auto-Completion
+
+`airlab` ships with tab-completion for both **Bash** and **Zsh** out of the box.
+
+**Bash:** The completion script is installed to `/etc/bash_completion.d/airlab` as part of the Debian package and is automatically sourced by new shell sessions.
+
+**Zsh:** The completion function is installed to `/usr/share/zsh/vendor-completions/_airlab` and is automatically discovered by zsh's completion system. The `airlab` shell function (needed for `airlab cd`) is installed to `/etc/airlab/airlab.zsh` and sourced from `~/.zshrc` during installation.
+
+**What it completes:**
+
+*   **Sub-commands:** `airlab <TAB>` lists all available commands (`setup`, `ssh`, `sync`, `vcs`, etc.).
+*   **Options and flags:** `airlab sync mt001 <TAB>` lists `--dry-run`, `--delete`, `--path=`, `--exclude=`, etc.
+*   **Robot names:** Commands that take a robot name (e.g., `airlab ssh <TAB>`) complete from the entries in `$AIRLAB_PATH/robot/robot.conf`.
+*   **Paths:** `airlab sync <robot> --path=<TAB>` and `--exclude=<TAB>` complete with files and directories under `$AIRLAB_PATH`.
+*   **Docker containers:** `airlab docker-join --name=<TAB>` completes with currently running Docker container names.
+*   **VCS repo files:** `airlab vcs init --repo_file=<TAB>` completes with `.yaml`/`.yml` files (and subdirectories) under `$AIRLAB_PATH/version_control/`.
+*   **VCS sub-commands:** `airlab vcs <TAB>` lists `init`, `pull`, `push`, `status`, and `update`, each with their own option completions.
+
+To manually reload the completion script (e.g., during development):
+
+```bash
+# Bash
+source /etc/bash_completion.d/airlab
+
+# Zsh (clear cache and restart)
+rm -f ~/.zcompdump*
+exec zsh
+```
 
 ## Commands
 
@@ -104,13 +137,14 @@ This command configures either the local environment or a remote robot system.
 ```bash
 airlab setup local [--path=<install_path>] [--force]
 
-airlab setup <robot_name> [--path=<install_path>] [--force]
+airlab setup <robot_name> [--path=<install_path>] [--force] [--password]
 ```
 
 #### Options
 
 *   `--path`: Installation directory (default: `~/airlab_ws`)
 *   `--force`: Overwrite an existing installation.
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly (remote setup only).
 *   `<robot_name>`: Robot identifier, as defined in `robot.conf`.
 
 #### Configuration Files
@@ -182,6 +216,7 @@ airlab ssh <robot_name> [options]
 
 #### Options
 
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly.
 *   `--help`: Show help message.
 
 #### Configuration Files
@@ -206,6 +241,44 @@ airlab ssh mt001  # SSH into mt001, as defined in robot.conf
 2.  "Workspace not found": Verify the `robot_info.yaml` configuration.
 
 *Note: Further detailed documentation is omitted due to its relative simplicity.*
+
+---
+
+### Auth
+
+Installs a local SSH public key on a remote robot's `authorized_keys` file to enable password-less SSH authentication.
+
+#### Usage
+
+```bash
+airlab auth <robot_name>
+```
+
+#### Arguments
+
+*   `<robot_name>`: Name of the robot (must be defined in `robot.conf`).
+
+#### Options
+
+*   `--help`: Show help message.
+
+#### Quick Examples
+
+```bash
+airlab auth mt001  # Copy your SSH public key to mt001
+```
+
+#### Features
+
+*   Automatically discovers SSH public keys in `~/.ssh/`.
+*   If multiple keys exist, presents an interactive selection menu.
+*   Checks for duplicate keys before installing (won't add a key that's already present).
+*   Verifies key-based SSH authentication works after installation.
+
+#### Dependencies
+
+*   `ssh`
+*   `sshpass`
 
 ---
 
@@ -264,6 +337,8 @@ airlab sync <robot_name> [options]
 *   `--path=<relative_path>`: Synchronize a specific directory.
 *   `--exclude=<pattern>`: Skip files matching the specified pattern.
 *   `--time`: Synchronize system time.
+*   `--progress`: Show progress during the sync operation (useful for large transfers).
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly.
 *   `--help`: Show help message.
 
 #### Configuration Files
@@ -324,6 +399,7 @@ airlab launch <robot_name> [options]
 *   `<robot_name>`: Name of the robot (must be defined in `robot.conf`).
 *   `--yaml_file=<file_name>`: Alternative launch file (relative to the workspace).
 *   `--stop`: Stop the `tmux` session.
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly (remote operations only).
 *   `--help`: Show help message.
 
 #### Configuration Files
@@ -342,7 +418,7 @@ airlab launch local --stop  # Stop local session
 # Remote operations
 airlab launch mt001  # Launch on mt001
 airlab launch mt001 --stop  # Stop on mt001
-airlab launch mt001 --yaml_file=mt002.yaml  # Launch specific yaml
+airlab launch mt001 --yaml_file=mt002.yaml  # Launch specific yaml on mt001
 ```
 
 #### Dependencies
@@ -383,6 +459,7 @@ airlab docker-build [OPTIONS]
 
 *   `--system=<system_name>`: Target system for remote operations.
 *   `--compose=<compose_file>`: Docker Compose file (relative to robot workspace. Defaults to `$DOCKER_BUILD_PATH`).
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly.
 *   `--help`: Display help message.
 
 #### docker-list
@@ -399,6 +476,7 @@ airlab docker-list [OPTIONS]
 
 *   `--system=<system_name>`: Target system for remote operations.
 *   `--images`: List images instead of containers.
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly.
 *   `--help`: Display help message.
 
 #### docker-join
@@ -415,6 +493,7 @@ airlab docker-join [OPTIONS]
 
 *   `--system=<system_name>`: Target system for remote operations.
 *   `--name=<container_name>`: Container to join.
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly.
 *   `--help`: Display help message.
 
 #### docker-up
@@ -431,6 +510,7 @@ airlab docker-up [OPTIONS]
 
 *   `--system=<system_name>`: Target system for remote operations.
 *   `--compose=<compose_file>`: Docker Compose file (relative to the robot workspace. Defaults to `$DOCKER_UP_PATH`).
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly.
 *   `--help`: Display help message.
 
 #### Common Features
@@ -462,8 +542,12 @@ airlab vcs init [OPTIONS]
 
 *   `--repo_file=FILE`: YAML file (default: `repos.yaml`).
 *   `--path=DIR`: Local directory. If not specified, the directory from the YAML file is used.
+*   `--all`: Apply the operation to all YAML files in the version-control directory.
+*   `--here`: Re-initialize repos in the current directory using its `AIRLAB_REPO_FILE`.
+*   `--here --check`: Compare the current directory structure against the YAML.
+*   `--here --from-scratch`: Delete all YAML-defined repo folders and re-clone from scratch.
+*   `--entry=NAME`: Only initialize a single repository entry from the YAML file.
 *   `--help`: Display help message.
-* `--all` : Apply the operation to all YAML files in the version-control directory
 
 #### pull
 
@@ -509,6 +593,26 @@ airlab vcs status [OPTIONS]
 *   `--help`: Display help message.
 * `--show-branch`: Show the current branch of the repository
 
+#### update
+
+Updates repositories by pulling latest changes and initializing any new repos. Must be run from a directory containing `AIRLAB_REPO_FILE`.
+
+##### Usage
+
+```bash
+airlab vcs update [OPTIONS]
+```
+
+##### Options
+
+*   `--help`: Display help message.
+
+##### Steps
+
+1.  Pull all existing repos (stops on first failure).
+2.  Run `airlab vcs init --here` to clone any missing repos.
+3.  Pull all repos again (collects failures and shows a summary).
+
 #### Common Features
 
 *   **Error Handling**: Employs colored error messages and performs validation before executing operations.
@@ -516,6 +620,37 @@ airlab vcs status [OPTIONS]
 *   **Environment**: Requires `$AIRLAB_PATH` to be set.
 
 Detailed documentation is available [here](/usr/local/bin/docs/version-control-commands.md).
+
+---
+
+### cd
+
+This command changes the current working directory to a path relative to `$AIRLAB_PATH`. It works like the standard `cd` command but always starts from the airlab workspace root.
+
+> **Note:** `airlab cd` is implemented as a shell function (not a standalone script) because a subprocess cannot change the parent shell's working directory. In Bash, the function is loaded from the completion script at `/etc/bash_completion.d/airlab`. In Zsh, it is loaded from `/etc/airlab/airlab.zsh` (sourced via `~/.zshrc`).
+
+#### Usage
+
+```bash
+airlab cd [path]
+```
+
+#### Arguments
+
+*   `path`: A directory path relative to `$AIRLAB_PATH`. If omitted, changes to `$AIRLAB_PATH` itself.
+
+#### Quick Examples
+
+```bash
+airlab cd                   # cd to $AIRLAB_PATH
+airlab cd docker            # cd to $AIRLAB_PATH/docker
+airlab cd robot             # cd to $AIRLAB_PATH/robot
+airlab cd version_control   # cd to $AIRLAB_PATH/version_control
+```
+
+#### Tab Completion
+
+`airlab cd <TAB>` lists directories under `$AIRLAB_PATH`, and supports nested path completion (e.g., `airlab cd docker/<TAB>`).
 
 ---
 
