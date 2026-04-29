@@ -250,6 +250,14 @@ docker-build docker-up docker-join docker-list vcs cd --help --version"
             fi
             ;;
 
+        set_hosts)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "$(_airlab_targets) --help" -- "$cur") )
+                return
+            fi
+            COMPREPLY=( $(compgen -W "--password --help" -- "$cur") )
+            ;;
+
         docker-build)
             COMPREPLY=( $(compgen -W "--system= --compose= --password --help" -- "$cur") )
             ;;

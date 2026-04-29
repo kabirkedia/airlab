@@ -258,6 +258,17 @@ _airlab() {
                         '-h[show help]'
                     ;;
 
+                set_hosts)
+                    if (( CURRENT == 1 )); then
+                        _airlab_complete_targets
+                        compadd -- --help
+                        return
+                    fi
+                    _arguments -s \
+                        '--password[use password auth]' \
+                        '--help[show help]'
+                    ;;
+
                 docker-build)
                     _arguments -s \
                         '--system=[system name]:system:' \

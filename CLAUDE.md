@@ -61,7 +61,6 @@ The scripts only depend on `$AIRLAB_PATH` being set (from an existing install).
 
 ## Known Issues
 
-- `set_hosts` command is referenced in the main entrypoint but no implementation file exists.
 - `robot-launch` uses `error_exit()` which is not defined in that file (should be `log_error` + `exit 1`).
 - `docker-join` default `CONTAINER_NAME` is `"docker-compose.yml"` which is a filename, not a container name.
 - `robot-sync` port extraction logic (lines ~303-311) is fragile for addresses with ports.
