@@ -354,6 +354,7 @@ airlab set_hosts mt001 --password   # Use password authentication
 #### Features
 
 *   Reads `robot.conf` entries and generates `/etc/hosts` lines mapping robot names to their IPs.
+*   Skips `ssh://` URI entries (e.g., `ssh://user@host:port` for port-forwarded connections), since they share a single hostname with different ports and don't map to unique IPs.
 *   Creates a timestamped backup before modifying `/etc/hosts` (e.g., `/etc/hosts_20260429_160345`).
 *   Uses fenced markers (`# Airlab Hosts Start` / `# Airlab Hosts End`) — if markers exist, only the content between them is replaced.
 *   Checks for hostname and IP conflicts with existing entries outside the markers. If conflicts are found, warns and aborts.
