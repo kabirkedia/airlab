@@ -178,7 +178,7 @@ generate_hosts_entries() {
     done < "$conf_file"
 
     if [[ ${#skipped[@]} -gt 0 ]]; then
-        log_info "Skipped ${#skipped[@]} ssh:// port-forwarded entries: ${skipped[*]}"
+        log_info "Skipped ${#skipped[@]} ssh:// port-forwarded entries: ${skipped[*]}" >&2
     fi
 
     # Remove trailing newline
