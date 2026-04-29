@@ -14,6 +14,7 @@
     *   [SSH](#ssh)
     *   [Auth](#auth)
     *   [set_env](#set_env)
+    *   [set_hosts](#set_hosts)
     *   [Sync](#sync)
     *   [Launch](#launch)
     *   [Docker Commands](#docker-commands)
@@ -317,6 +318,53 @@ airlab set_env robot1 MY_VAR="hello"
 *   For remote execution, updates both the remote `airlab.env` file and the configuration in `robot_info.yaml`.
 
 *Note: Further detailed documentation is omitted due to its relative simplicity.*
+
+---
+
+### set_hosts
+
+Updates `/etc/hosts` with hostname-to-IP mappings from `robot.conf`, so you can reach robots by name (e.g., `ping mt001`).
+
+#### Usage
+
+```bash
+airlab set_hosts local [--help]
+
+airlab set_hosts <robot_name> [--password] [--help]
+```
+
+#### Arguments
+
+*   `local`: Update the local machine's `/etc/hosts`.
+*   `<robot_name>`: Update `/etc/hosts` on a remote robot via SSH.
+
+#### Options
+
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly (remote targets only).
+*   `--help`: Show help message.
+
+#### Quick Examples
+
+```bash
+airlab set_hosts local              # Update local /etc/hosts
+airlab set_hosts mt001              # Update /etc/hosts on mt001
+airlab set_hosts mt001 --password   # Use password authentication
+```
+
+#### Features
+
+*   Reads `robot.conf` entries and generates `/etc/hosts` lines mapping robot names to their IPs.
+*   Creates a timestamped backup before modifying `/etc/hosts` (e.g., `/etc/hosts_20260429_160345`).
+*   Uses fenced markers (`# Airlab Hosts Start` / `# Airlab Hosts End`) — if markers exist, only the content between them is replaced.
+*   Checks for hostname and IP conflicts with existing entries outside the markers. If conflicts are found, warns and aborts.
+*   Supports both local and remote targets with full SSH key/password authentication.
+
+#### Dependencies
+
+*   `ssh`, `sshpass` (for remote targets)
+*   `sudo` (required to modify `/etc/hosts`)
+
+Detailed documentation is available [here](/usr/local/bin/docs/set_hosts.md).
 
 ---
 

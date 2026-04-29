@@ -1,0 +1,429 @@
+#!/bin/bash
+
+# Exit on error, undefined variables, and pipe failures
+set -euo pipefail
+
+# Color codes for output
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly NC='\033[0m' # No Color
+
+readonly HOSTS_FILE="/etc/hosts"
+readonly START_MARKER="# Airlab Hosts Start"
+readonly END_MARKER="# Airlab Hosts End"
+
+# Logging functions
+log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
+
+show_usage() {
+    cat << EOF
+Usage: airlab set_hosts <target> [options]
+
+Update /etc/hosts with hostname-to-IP mappings from robot.conf.
+
+Arguments:
+    <target>        'local' to update the local /etc/hosts file, or a robot
+                    name (from robot.conf) to update the remote robot's
+                    /etc/hosts file via SSH.
+
+Options:
+    --password      Skip key-based SSH and prompt for password directly
+                    (remote targets only)
+    --help          Show this help message
+
+Details:
+    Reads robot.conf entries (e.g. mt001=dtc@10.223.1.99) and generates
+    /etc/hosts entries so that robot names resolve to their IP addresses.
+
+    A timestamped backup of /etc/hosts is created before any modification
+    (e.g. /etc/hosts_20260429_160345).
+
+    Entries are placed between markers:
+        $START_MARKER
+        ...
+        $END_MARKER
+
+    If the markers already exist, only the content between them is replaced.
+    If they don't exist, a new section is appended.
+
+    Before writing, the command checks for hostname or IP conflicts with
+    existing /etc/hosts entries outside the markers. If conflicts are found,
+    the command warns and aborts.
+
+Examples:
+    airlab set_hosts local              # Update local /etc/hosts
+    airlab set_hosts mt001              # Update /etc/hosts on mt001
+    airlab set_hosts mt001 --password   # Use password authentication
+EOF
+}
+
+# Function to check if required commands exist
+check_dependencies() {
+    local deps=("ssh" "sudo")
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" >/dev/null 2>&1; then
+            log_error "Required dependency '$dep' is not installed."
+            exit 1
+        fi
+    done
+}
+
+parse_yaml() {
+    local yaml_file=$1
+    local key=$2
+    local result
+
+    if [[ ! -f "$yaml_file" ]]; then
+        log_error "YAML file not found: $yaml_file"
+        return 1
+    fi
+
+    if ! python3 -c "import yaml" 2>/dev/null; then
+        log_error "Python YAML module not found. Please install: pip3 install PyYAML"
+        return 1
+    fi
+
+    result=$(python3 -c '
+import sys
+import yaml
+
+try:
+    with open("'"$yaml_file"'", "r") as f:
+        data = yaml.safe_load(f)
+        value = data
+        for key in "'"$key"'".split("."):
+            if not isinstance(value, dict):
+                print("")
+                sys.exit(1)
+            value = value.get(key, "")
+        print(value)
+except Exception as e:
+    print("")
+    sys.exit(1)
+')
+
+    if [[ -z "$result" ]]; then
+        log_error "Failed to parse key '$key' from YAML file"
+        return 1
+    fi
+
+    echo "$result"
+}
+
+ssh_authenticate() {
+    local ssh_address=$1
+    local force_password=${2:-false}
+    robot_password=""
+
+    if [[ "$force_password" == false ]]; then
+        log_info "Attempting key-based SSH to $ssh_address..."
+        if ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no -o BatchMode=yes "$ssh_address" exit 2>/dev/null; then
+            log_info "Key-based SSH connection successful"
+            return 0
+        fi
+        log_warn "Key-based SSH failed. Falling back to password authentication."
+    fi
+
+    if ! command -v sshpass >/dev/null 2>&1; then
+        log_error "Key-based SSH failed and 'sshpass' is not installed for password fallback."
+        log_error "Either set up SSH keys or install sshpass: sudo apt install sshpass"
+        return 1
+    fi
+
+    log_info "Enter password for $ssh_address:"
+    read -s robot_password
+    [[ -z "$robot_password" ]] && log_error "Password cannot be empty" && return 1
+    echo
+
+    if ! sshpass -p "$robot_password" ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "$ssh_address" exit; then
+        log_error "Cannot connect to remote system '$ssh_address'"
+        return 1
+    fi
+    log_info "SSH connection successful"
+    return 0
+}
+
+# Parse robot.conf and generate /etc/hosts entries.
+# Output: one line per robot in the format "IP    hostname"
+generate_hosts_entries() {
+    local conf_file="$1"
+    local entries=""
+
+    while IFS='=' read -r name value; do
+        # Skip empty lines, comments, or lines without '='
+        [[ -z "$name" || -z "$value" || "$name" == \#* ]] && continue
+
+        local ip
+        ip=$(echo "$value" | cut -d'@' -f2)
+
+        # Handle addresses with port (user@host:port)
+        ip=$(echo "$ip" | cut -d':' -f1)
+
+        if [[ -n "$ip" && -n "$name" ]]; then
+            entries+="$(printf "%-15s %s" "$ip" "$name")"$'\n'
+        fi
+    done < "$conf_file"
+
+    # Remove trailing newline
+    echo -n "$entries"
+}
+
+# Check for conflicts between new entries and existing /etc/hosts content
+# (outside the airlab markers). Returns 0 if clean, 1 if conflicts found.
+# $1 = hosts file content, $2 = new entries to add
+check_conflicts() {
+    local hosts_content="$1"
+    local new_entries="$2"
+    local has_conflict=false
+
+    # Extract lines outside the airlab marker block (skip comments and blanks)
+    local outside_lines
+    outside_lines=$(echo "$hosts_content" | awk \
+        -v start="$START_MARKER" -v end="$END_MARKER" '
+        $0 == start { in_block = 1; next }
+        $0 == end   { in_block = 0; next }
+        !in_block   { print }
+    ' | grep -v '^\s*#' | grep -v '^\s*$' || true)
+
+    # Check each new entry against existing entries
+    while IFS= read -r new_line; do
+        [[ -z "$new_line" ]] && continue
+
+        local new_ip new_hostname
+        new_ip=$(echo "$new_line" | awk '{print $1}')
+        new_hostname=$(echo "$new_line" | awk '{print $2}')
+
+        # Check for duplicate hostname
+        local existing_ip
+        existing_ip=$(echo "$outside_lines" | awk -v h="$new_hostname" '
+            { for (i=2; i<=NF; i++) if ($i == h) print $1 }
+        ' | head -1)
+
+        if [[ -n "$existing_ip" ]]; then
+            if [[ "$existing_ip" == "$new_ip" ]]; then
+                log_warn "Hostname '$new_hostname' already mapped to $new_ip outside airlab markers (duplicate)"
+            else
+                log_error "CONFLICT: Hostname '$new_hostname' is already mapped to $existing_ip outside airlab markers (new: $new_ip)"
+            fi
+            has_conflict=true
+        fi
+
+        # Check for duplicate IP with different hostname
+        local existing_hostnames
+        existing_hostnames=$(echo "$outside_lines" | awk -v ip="$new_ip" '
+            $1 == ip { for (i=2; i<=NF; i++) print $i }
+        ' || true)
+
+        if [[ -n "$existing_hostnames" ]]; then
+            while IFS= read -r eh; do
+                if [[ "$eh" != "$new_hostname" ]]; then
+                    log_warn "IP $new_ip is already mapped to hostname '$eh' outside airlab markers"
+                fi
+            done <<< "$existing_hostnames"
+        fi
+    done <<< "$new_entries"
+
+    if [[ "$has_conflict" == true ]]; then
+        return 1
+    fi
+    return 0
+}
+
+# Build the new /etc/hosts content with entries inserted between markers.
+# $1 = current hosts file content, $2 = new entries
+build_new_hosts() {
+    local hosts_content="$1"
+    local new_entries="$2"
+
+    if echo "$hosts_content" | grep -q "^${START_MARKER}$"; then
+        # Markers exist: replace content between them
+        echo "$hosts_content" | awk \
+            -v start="$START_MARKER" -v end="$END_MARKER" -v content="$new_entries" '
+            $0 == start { print; print content; skip = 1; next }
+            $0 == end   { print; skip = 0; next }
+            !skip       { print }
+        '
+    else
+        # No markers: append new section
+        echo "$hosts_content"
+        echo ""
+        echo "$START_MARKER"
+        echo "$new_entries"
+        echo "$END_MARKER"
+    fi
+}
+
+# Update /etc/hosts on the local machine
+set_local_hosts() {
+    local new_entries="$1"
+
+    if [[ ! -f "$HOSTS_FILE" ]]; then
+        log_error "$HOSTS_FILE not found"
+        exit 1
+    fi
+
+    local hosts_content
+    hosts_content=$(cat "$HOSTS_FILE")
+
+    # Check for conflicts
+    log_info "Checking for conflicts with existing entries..."
+    if ! check_conflicts "$hosts_content" "$new_entries"; then
+        log_error "Conflicts detected. Resolve them manually before proceeding."
+        exit 1
+    fi
+    log_info "No conflicts found."
+
+    # Build new content
+    local new_hosts
+    new_hosts=$(build_new_hosts "$hosts_content" "$new_entries")
+
+    # Show what will change
+    echo ""
+    log_info "The following entries will be set between airlab markers:"
+    echo "$new_entries" | sed 's/^/    /'
+    echo ""
+
+    # Create timestamped backup
+    local backup_suffix
+    backup_suffix=$(date +"%Y%m%d_%H%M%S")
+    local backup_path="${HOSTS_FILE}_${backup_suffix}"
+    log_info "Creating backup: $backup_path"
+    sudo cp "$HOSTS_FILE" "$backup_path"
+
+    # Write the updated hosts file
+    echo "$new_hosts" | sudo tee "$HOSTS_FILE" > /dev/null
+    log_info "Local $HOSTS_FILE updated successfully."
+}
+
+# Update /etc/hosts on a remote machine via SSH
+set_remote_hosts() {
+    local ssh_address="$1"
+    local new_entries="$2"
+
+    # Read remote /etc/hosts
+    local hosts_content
+    hosts_content=$("${SSHPASS_PREFIX[@]}" ssh -o StrictHostKeyChecking=no "$ssh_address" "cat $HOSTS_FILE") || {
+        log_error "Failed to read $HOSTS_FILE on $ssh_address"
+        exit 1
+    }
+
+    # Check for conflicts
+    log_info "Checking for conflicts on remote $ssh_address..."
+    if ! check_conflicts "$hosts_content" "$new_entries"; then
+        log_error "Conflicts detected on remote system. Resolve them manually before proceeding."
+        exit 1
+    fi
+    log_info "No conflicts found."
+
+    # Build new content
+    local new_hosts
+    new_hosts=$(build_new_hosts "$hosts_content" "$new_entries")
+
+    # Show what will change
+    echo ""
+    log_info "The following entries will be set between airlab markers on $ssh_address:"
+    echo "$new_entries" | sed 's/^/    /'
+    echo ""
+
+    # Create timestamped backup on remote
+    local backup_suffix
+    backup_suffix=$(date +"%Y%m%d_%H%M%S")
+    local backup_path="${HOSTS_FILE}_${backup_suffix}"
+    log_info "Creating remote backup: $backup_path"
+    "${SSHPASS_PREFIX[@]}" ssh -o StrictHostKeyChecking=no "$ssh_address" \
+        "sudo cp $HOSTS_FILE $backup_path" || {
+        log_error "Failed to create backup on $ssh_address"
+        exit 1
+    }
+
+    # Write the updated hosts file on remote
+    echo "$new_hosts" | "${SSHPASS_PREFIX[@]}" ssh -o StrictHostKeyChecking=no "$ssh_address" \
+        "sudo tee $HOSTS_FILE > /dev/null" || {
+        log_error "Failed to update $HOSTS_FILE on $ssh_address"
+        exit 1
+    }
+    log_info "Remote $HOSTS_FILE on $ssh_address updated successfully."
+}
+
+main() {
+    check_dependencies
+
+    if [[ $# -eq 0 || "$1" == "--help" ]]; then
+        show_usage
+        exit 0
+    fi
+
+    local target="$1"
+    shift
+
+    local FORCE_PASSWORD=false
+
+    # Parse additional flags
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --password)
+                FORCE_PASSWORD=true
+                ;;
+            --help)
+                show_usage
+                exit 0
+                ;;
+            *)
+                log_error "Invalid option: $1"
+                show_usage
+                exit 1
+                ;;
+        esac
+        shift
+    done
+
+    # Load robot.conf
+    local ROBOT_CONF="$AIRLAB_PATH/robot/robot.conf"
+    if [[ ! -f "$ROBOT_CONF" ]]; then
+        log_error "Robot configuration file not found at '$ROBOT_CONF'"
+        exit 1
+    fi
+
+    # Generate hosts entries from robot.conf
+    local new_entries
+    new_entries=$(generate_hosts_entries "$ROBOT_CONF")
+    if [[ -z "$new_entries" ]]; then
+        log_error "No entries found in $ROBOT_CONF"
+        exit 1
+    fi
+
+    case "$target" in
+        local)
+            set_local_hosts "$new_entries"
+            ;;
+        *)
+            # Treat as a robot name — look up SSH address
+            set +e
+            local ROBOT_SSH_ADDRESS
+            ROBOT_SSH_ADDRESS=$(grep "^${target}=" "$ROBOT_CONF" | cut -d= -f2)
+            if [[ -z "$ROBOT_SSH_ADDRESS" ]]; then
+                log_error "Robot '$target' not found in $ROBOT_CONF"
+                exit 1
+            fi
+            set -e
+
+            # Authenticate via SSH
+            robot_password=""
+            if ! ssh_authenticate "$ROBOT_SSH_ADDRESS" "$FORCE_PASSWORD"; then
+                exit 1
+            fi
+
+            SSHPASS_PREFIX=()
+            if [[ -n "$robot_password" ]]; then
+                SSHPASS_PREFIX=(sshpass -p "$robot_password")
+            fi
+
+            set_remote_hosts "$ROBOT_SSH_ADDRESS" "$new_entries"
+            ;;
+    esac
+}
+
+main "$@"
