@@ -17,6 +17,8 @@ airlab sync <robot_name> [options]
 - `--path=<relative_path>`: Sync specific directory relative to workspace
 - `--exclude=<pattern>`: Skip files/directories matching pattern
 - `--time`: Synchronize system time between local and remote
+- `--progress`: Show progress during the sync operation (useful for large transfers; may slow down the sync)
+- `--password`: Skip key-based SSH authentication and prompt for a password directly
 - `--help`: Display usage information
 
 ## Configuration Files
