@@ -37,6 +37,7 @@ Options:
 Details:
     Reads robot.conf entries (e.g. mt001=dtc@10.223.1.99) and generates
     /etc/hosts entries so that robot names resolve to their IP addresses.
+    Entries using ssh:// URIs (port-forwarded connections) are skipped.
 
     A timestamped backup of /etc/hosts is created before any modification
     (e.g. /etc/hosts_20260429_160345).
@@ -148,13 +149,22 @@ ssh_authenticate() {
 
 # Parse robot.conf and generate /etc/hosts entries.
 # Output: one line per robot in the format "IP    hostname"
+# Skips ssh:// URI entries (port-forwarded connections) since they share
+# a single hostname with different ports and don't map to unique IPs.
 generate_hosts_entries() {
     local conf_file="$1"
     local entries=""
+    local skipped=()
 
     while IFS='=' read -r name value; do
         # Skip empty lines, comments, or lines without '='
         [[ -z "$name" || -z "$value" || "$name" == \#* ]] && continue
+
+        # Skip ssh:// URI entries (port-forwarded connections)
+        if [[ "$value" == ssh://* ]]; then
+            skipped+=("$name")
+            continue
+        fi
 
         local ip
         ip=$(echo "$value" | cut -d'@' -f2)
@@ -166,6 +176,10 @@ generate_hosts_entries() {
             entries+="$(printf "%-15s %s" "$ip" "$name")"$'\n'
         fi
     done < "$conf_file"
+
+    if [[ ${#skipped[@]} -gt 0 ]]; then
+        log_info "Skipped ${#skipped[@]} ssh:// port-forwarded entries: ${skipped[*]}"
+    fi
 
     # Remove trailing newline
     echo -n "$entries"

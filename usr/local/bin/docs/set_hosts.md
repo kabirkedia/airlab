@@ -24,6 +24,8 @@ The command reads all entries from `$AIRLAB_PATH/robot/robot.conf` (format: `nam
 10.3.1.102      mt002
 ```
 
+Entries using `ssh://` URIs (e.g., `ssh://user@host:port` for port-forwarded connections) are automatically skipped, since they share a single hostname with different ports and don't map to unique IPs. Skipped entries are logged for visibility.
+
 ### Markers
 Entries are placed between fenced markers in `/etc/hosts`:
 ```
