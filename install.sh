@@ -90,6 +90,12 @@ else
         if ! grep -q 'source ~/VENVs/airlab/bin/activate' ~/.bashrc; then
             echo 'source ~/VENVs/airlab/bin/activate' >> ~/.bashrc
         fi
+        # Also add to .zshrc if zsh is installed and .zshrc exists or zsh is the login shell.
+        if command -v zsh >/dev/null 2>&1 && [ -f ~/.zshrc ]; then
+            if ! grep -q 'source ~/VENVs/airlab/bin/activate' ~/.zshrc; then
+                echo 'source ~/VENVs/airlab/bin/activate' >> ~/.zshrc
+            fi
+        fi
     elif [ "$VENV_ACTION" = "reuse" ]; then
         # Activate the existing venv so install_dependencies_ubuntu24.sh sees $VIRTUAL_ENV.
         source "$VENV_DIR/airlab/bin/activate"
@@ -119,6 +125,15 @@ dpkg-deb --build "$STAGING_DIR" "$SCRIPT_DIR/../airlab.deb"
 # Install the DEB package.
 sudo dpkg -i "$SCRIPT_DIR/../airlab.deb"
 
+# Set up zsh integration if zsh is installed.
+if command -v zsh >/dev/null 2>&1 && [ -f ~/.zshrc ]; then
+    # Source the airlab shell function wrapper for "airlab cd" support.
+    if ! grep -q 'source /etc/airlab/airlab.zsh' ~/.zshrc; then
+        echo '# Airlab shell function (enables "airlab cd")' >> ~/.zshrc
+        echo 'source /etc/airlab/airlab.zsh' >> ~/.zshrc
+    fi
+fi
+
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BOLD='\033[1m'
@@ -139,6 +154,11 @@ else
     echo -e "${YELLOW}${BOLD}>>> To start using AirLab, open a new terminal or run:${RESET}"
     echo ""
     echo -e "    ${BOLD}source ~/VENVs/airlab/bin/activate${RESET}"
+fi
+if command -v zsh >/dev/null 2>&1 && [ -f ~/.zshrc ]; then
+    echo ""
+    echo -e "${GREEN}    Zsh support has been configured.${RESET}"
+    echo -e "${GREEN}    Completions and shell functions will be available in new zsh sessions.${RESET}"
 fi
 echo ""
 echo -e "${GREEN}========================================${RESET}"

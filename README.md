@@ -95,7 +95,11 @@ After installing airlab you can run the command to setup the environment `airlab
 
 ### Tab Auto-Completion
 
-`airlab` ships with Bash tab-completion out of the box. The completion script is installed to `/etc/bash_completion.d/airlab` as part of the Debian package and is automatically sourced by new shell sessions.
+`airlab` ships with tab-completion for both **Bash** and **Zsh** out of the box.
+
+**Bash:** The completion script is installed to `/etc/bash_completion.d/airlab` as part of the Debian package and is automatically sourced by new shell sessions.
+
+**Zsh:** The completion function is installed to `/usr/share/zsh/vendor-completions/_airlab` and is automatically discovered by zsh's completion system. The `airlab` shell function (needed for `airlab cd`) is installed to `/etc/airlab/airlab.zsh` and sourced from `~/.zshrc` during installation.
 
 **What it completes:**
 
@@ -110,7 +114,12 @@ After installing airlab you can run the command to setup the environment `airlab
 To manually reload the completion script (e.g., during development):
 
 ```bash
+# Bash
 source /etc/bash_completion.d/airlab
+
+# Zsh (clear cache and restart)
+rm -f ~/.zcompdump*
+exec zsh
 ```
 
 ## Commands
@@ -546,7 +555,7 @@ Detailed documentation is available [here](/usr/local/bin/docs/version-control-c
 
 This command changes the current working directory to a path relative to `$AIRLAB_PATH`. It works like the standard `cd` command but always starts from the airlab workspace root.
 
-> **Note:** `airlab cd` is implemented as a shell function (not a standalone script) because a subprocess cannot change the parent shell's working directory. The function is automatically loaded from the completion script at `/etc/bash_completion.d/airlab`.
+> **Note:** `airlab cd` is implemented as a shell function (not a standalone script) because a subprocess cannot change the parent shell's working directory. In Bash, the function is loaded from the completion script at `/etc/bash_completion.d/airlab`. In Zsh, it is loaded from `/etc/airlab/airlab.zsh` (sourced via `~/.zshrc`).
 
 #### Usage
 

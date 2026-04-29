@@ -28,10 +28,15 @@ usr/local/bin/
       push                        # Push repos
       status                      # Status with branch/remote/dirty/submodule checks
       update                      # Pull + init missing + pull again with summary
+usr/share/zsh/vendor-completions/
+  _airlab                         # Zsh completion function (auto-discovered via fpath)
 etc/airlab/                       # Default config templates (copied to workspace on setup)
+  airlab.zsh                      # Zsh shell function wrapper (sourced from ~/.zshrc)
   robot/robot.conf                # Robot SSH address mappings (name=user@host)
   robot/robot_info.yaml           # Robot metadata (YAML)
   version_control/repos.yaml      # Repository definitions for vcstool
+etc/bash_completion.d/
+  airlab                          # Bash completion + shell function wrapper
 ```
 
 ## Key Conventions
@@ -42,7 +47,8 @@ etc/airlab/                       # Default config templates (copied to workspac
 - **`--password` flag**: All SSH-using commands accept `--password` to skip key-based auth and prompt directly.
 - **YAML parsing**: Done via inline `python3 -c "import yaml; ..."` calls. PyYAML is a dependency.
 - **AIRLAB_REPO_FILE**: A marker file placed in repo directories by `vcs init`. Contains the YAML filename used for initialization. Used by `--here`, `--check`, `--from-scratch`, `vcs status`, and `vcs update`.
-- **Config path**: `$AIRLAB_PATH` env var points to the workspace root (set in `~/.bashrc` during `airlab setup local`).
+- **Config path**: `$AIRLAB_PATH` env var points to the workspace root (set in `~/.bashrc` or `~/.zshrc` during `airlab setup local`).
+- **Shell support**: Both Bash and Zsh are supported. Bash completion uses the traditional `complete -F` API in `etc/bash_completion.d/airlab`. Zsh completion uses `_arguments` in `usr/share/zsh/vendor-completions/_airlab`. The `airlab cd` shell function is defined in both completion files (Bash) and `etc/airlab/airlab.zsh` (Zsh). The install script configures `~/.zshrc` when zsh is detected.
 
 ## Testing
 
