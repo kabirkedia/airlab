@@ -26,6 +26,7 @@ airlab setup local --path=/desired/installation/path
 #### Options:
 - `--path` : Specify the custom installation path. If not provided, defaults to ~/airlab_ws
 - `--force`: Overwrite existing installations.
+- `--password`: Skip key-based SSH authentication and prompt for a password directly (remote setup only).
 
 When running airlab setup local, the command:
 - Creates the Airlab directory structure
@@ -52,8 +53,9 @@ airlab setup robot1 --path=/desired/installation/path --force
 ```
 
 #### Options:
-- `--path` : Specify the custom installation path.
+- `--path` : Specify the custom installation path. If not provided, defaults to ~/airlab_ws.
 - `--force`: Overwrite existing installations.
+- `--password`: Skip key-based SSH authentication and prompt for a password directly.
 
 When running airlab setup <system_name>, the command:
 - Validates the robot configuration

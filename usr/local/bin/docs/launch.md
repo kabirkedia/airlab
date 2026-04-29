@@ -17,6 +17,7 @@ airlab launch <robot_name> [options]
   - Defaults to the path specified in LAUNCH_FILE_PATH environment variable
   - Path should be relative to the robot's workspace
 - `--stop`: Stop the tmux session instead of starting it
+- `--password`: Skip key-based SSH authentication and prompt for a password directly (remote operations only)
 - `--help`: Display usage information
 
 ## Environment Variables
@@ -34,10 +35,10 @@ airlab launch mt001
 # Stop tmux session on remote system
 airlab launch mt001 --stop
 
-# Launch specific YAML file on remote system
+# Launch specific YAML file on remote system mt001
 airlab launch mt001 --yaml_file=mt002.yaml
 
-# Stop specific YAML file's tmux session on remote system
+# Stop specific YAML file's tmux session on remote system mt001
 airlab launch mt001 --yaml_file=mt002.yaml --stop
 ```
 

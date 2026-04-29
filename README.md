@@ -136,13 +136,14 @@ This command configures either the local environment or a remote robot system.
 ```bash
 airlab setup local [--path=<install_path>] [--force]
 
-airlab setup <robot_name> [--path=<install_path>] [--force]
+airlab setup <robot_name> [--path=<install_path>] [--force] [--password]
 ```
 
 #### Options
 
 *   `--path`: Installation directory (default: `~/airlab_ws`)
 *   `--force`: Overwrite an existing installation.
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly (remote setup only).
 *   `<robot_name>`: Robot identifier, as defined in `robot.conf`.
 
 #### Configuration Files
@@ -214,6 +215,7 @@ airlab ssh <robot_name> [options]
 
 #### Options
 
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly.
 *   `--help`: Show help message.
 
 #### Configuration Files
@@ -296,6 +298,8 @@ airlab sync <robot_name> [options]
 *   `--path=<relative_path>`: Synchronize a specific directory.
 *   `--exclude=<pattern>`: Skip files matching the specified pattern.
 *   `--time`: Synchronize system time.
+*   `--progress`: Show progress during the sync operation (useful for large transfers).
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly.
 *   `--help`: Show help message.
 
 #### Configuration Files
@@ -356,6 +360,7 @@ airlab launch <robot_name> [options]
 *   `<robot_name>`: Name of the robot (must be defined in `robot.conf`).
 *   `--yaml_file=<file_name>`: Alternative launch file (relative to the workspace).
 *   `--stop`: Stop the `tmux` session.
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly (remote operations only).
 *   `--help`: Show help message.
 
 #### Configuration Files
@@ -374,7 +379,7 @@ airlab launch local --stop  # Stop local session
 # Remote operations
 airlab launch mt001  # Launch on mt001
 airlab launch mt001 --stop  # Stop on mt001
-airlab launch mt001 --yaml_file=mt002.yaml  # Launch specific yaml
+airlab launch mt001 --yaml_file=mt002.yaml  # Launch specific yaml on mt001
 ```
 
 #### Dependencies
@@ -415,6 +420,7 @@ airlab docker-build [OPTIONS]
 
 *   `--system=<system_name>`: Target system for remote operations.
 *   `--compose=<compose_file>`: Docker Compose file (relative to robot workspace. Defaults to `$DOCKER_BUILD_PATH`).
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly.
 *   `--help`: Display help message.
 
 #### docker-list
@@ -431,6 +437,7 @@ airlab docker-list [OPTIONS]
 
 *   `--system=<system_name>`: Target system for remote operations.
 *   `--images`: List images instead of containers.
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly.
 *   `--help`: Display help message.
 
 #### docker-join
@@ -447,6 +454,7 @@ airlab docker-join [OPTIONS]
 
 *   `--system=<system_name>`: Target system for remote operations.
 *   `--name=<container_name>`: Container to join.
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly.
 *   `--help`: Display help message.
 
 #### docker-up
@@ -463,6 +471,7 @@ airlab docker-up [OPTIONS]
 
 *   `--system=<system_name>`: Target system for remote operations.
 *   `--compose=<compose_file>`: Docker Compose file (relative to the robot workspace. Defaults to `$DOCKER_UP_PATH`).
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly.
 *   `--help`: Display help message.
 
 #### Common Features
@@ -494,8 +503,12 @@ airlab vcs init [OPTIONS]
 
 *   `--repo_file=FILE`: YAML file (default: `repos.yaml`).
 *   `--path=DIR`: Local directory. If not specified, the directory from the YAML file is used.
+*   `--all`: Apply the operation to all YAML files in the version-control directory.
+*   `--here`: Re-initialize repos in the current directory using its `AIRLAB_REPO_FILE`.
+*   `--here --check`: Compare the current directory structure against the YAML.
+*   `--here --from-scratch`: Delete all YAML-defined repo folders and re-clone from scratch.
+*   `--entry=NAME`: Only initialize a single repository entry from the YAML file.
 *   `--help`: Display help message.
-* `--all` : Apply the operation to all YAML files in the version-control directory
 
 #### pull
 
@@ -540,6 +553,26 @@ airlab vcs status [OPTIONS]
 
 *   `--help`: Display help message.
 * `--show-branch`: Show the current branch of the repository
+
+#### update
+
+Updates repositories by pulling latest changes and initializing any new repos. Must be run from a directory containing `AIRLAB_REPO_FILE`.
+
+##### Usage
+
+```bash
+airlab vcs update [OPTIONS]
+```
+
+##### Options
+
+*   `--help`: Display help message.
+
+##### Steps
+
+1.  Pull all existing repos (stops on first failure).
+2.  Run `airlab vcs init --here` to clone any missing repos.
+3.  Pull all repos again (collects failures and shows a summary).
 
 #### Common Features
 

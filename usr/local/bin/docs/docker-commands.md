@@ -22,6 +22,7 @@ airlab docker-build [--system=<system_name>] [--compose=<compose_file>]
 - `--system=<system_name>`: (Optional) Specifies the target system name for remote operations
 - `--compose=<compose_file>`: (Optional) Specifies the Docker Compose file (defaults to $DOCKER_BUILD_PATH). \
 **Path should be relative to $AIRLAB_PATH.**
+- `--password`: Skip key-based SSH authentication and prompt for a password directly (remote operations only)
 - `--help`: Displays help information
 
 ### Examples
@@ -52,6 +53,7 @@ airlab docker-list [--system=<system_name>] [--images]
 ### Options
 - `--system=<system_name>`: (Optional) Specifies the target system for remote operations
 - `--images`: (Optional) Lists Docker images instead of containers
+- `--password`: Skip key-based SSH authentication and prompt for a password directly (remote operations only)
 - `--help`: Displays help information
 
 ### Examples
@@ -80,6 +82,7 @@ airlab docker-join [--system=<system_name>] [--name=<container_name>]
 ### Options
 - `--system=<system_name>`: (Optional) Specifies the target system for remote operations
 - `--name=<container_name>`: Specifies the container to join
+- `--password`: Skip key-based SSH authentication and prompt for a password directly (remote operations only)
 - `--help`: Displays help information
 
 ### Examples
@@ -108,6 +111,7 @@ airlab docker-up [--system=<system_name>] [--compose=<compose_file>]
 ### Options
 - `--system=<system_name>`: (Optional) Specifies the target system for remote operations
 - `--compose=<compose_file>`: (Optional) Specifies the Docker Compose file (defaults to $DOCKER_UP_PATH)
+- `--password`: Skip key-based SSH authentication and prompt for a password directly (remote operations only)
 - `--help`: Displays help information
 
 ### Examples
