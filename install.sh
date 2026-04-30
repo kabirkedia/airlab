@@ -4,6 +4,7 @@ set -e  # Exit immediately if a command exits with a non-zero status
 
 # Parse command line arguments.
 VENV_MODE=""  # "", "override", "no-override", or "skip"
+SKIP_APT=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --override-venv)
@@ -18,9 +19,13 @@ while [[ $# -gt 0 ]]; do
             VENV_MODE="skip"
             shift
             ;;
+        --skip-apt)
+            SKIP_APT=true
+            shift
+            ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--override-venv | --no-override-venv | --skip-venv]"
+            echo "Usage: $0 [--override-venv | --no-override-venv | --skip-venv] [--skip-apt]"
             exit 1
             ;;
     esac
@@ -29,13 +34,17 @@ done
 # Get the directory of the current script.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Update package lists
-sudo apt update
+if [ "$SKIP_APT" = true ]; then
+    echo "Skipping apt update and apt install (--skip-apt)."
+else
+    # Update package lists
+    sudo apt update
 
-# Install apt dependencies
-sudo apt install -y \
-    python3-pip \
-    python3-venv
+    # Install apt dependencies
+    sudo apt install -y \
+        python3-pip \
+        python3-venv
+fi
 
 # Handle venv setup.
 VENV_DIR="$HOME/VENVs"
@@ -104,7 +113,11 @@ fi
 
 # Go back to the script directory and run the Ubuntu 24 dependencies installation script.
 cd "$SCRIPT_DIR"
-bash install_dependencies_ubuntu24.sh
+DEP_ARGS=()
+if [ "$SKIP_APT" = true ]; then
+    DEP_ARGS+=(--skip-apt)
+fi
+bash install_dependencies_ubuntu24.sh "${DEP_ARGS[@]}"
 
 # Create the DEB package from a clean staging directory so that only
 # DEBIAN/, etc/, and usr/ end up in the package. Building directly from

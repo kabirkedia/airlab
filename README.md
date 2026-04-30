@@ -86,6 +86,16 @@
 
     The `--skip-venv` option is useful when you manage your own virtual environment (e.g., conda, poetry, or a shared team venv). It requires that a virtual environment is already active in the current terminal session. Python dependencies will be installed into that active venv instead of creating `~/VENVs/airlab`.
 
+    **Skip apt installs:**
+
+    If you've already installed the apt dependencies (or want to manage them yourself), use `--skip-apt` to skip both `sudo apt update` and `sudo apt install` in `install.sh` and `install_dependencies_ubuntu24.sh`:
+
+    ```bash
+    ./install.sh --skip-apt
+    ```
+
+    This flag can be combined with the venv flags, e.g., `./install.sh --skip-venv --skip-apt`.
+
 3.  **(Optional) Install Missing Dependencies:** This command can attempt to fix broken installations by installing missing dependencies. While it can be helpful, it's generally more reliable to ensure all prerequisites are installed beforehand.
 
     ```bash
