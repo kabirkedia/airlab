@@ -400,6 +400,7 @@ main() {
         log_error "Robot configuration file not found at '$ROBOT_CONF'"
         exit 1
     fi
+    log_info "Using robot configuration: $(realpath "$ROBOT_CONF")"
 
     # Generate hosts entries from robot.conf
     local new_entries
