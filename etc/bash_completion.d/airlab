@@ -284,7 +284,7 @@ docker-build docker-up docker-join docker-list vcs cd --help --version"
             ;;
 
         vcs)
-            local vcs_commands="init pull push status update --help"
+            local vcs_commands="init pull push status update check tag --help"
 
             # Position 2: vcs sub-command
             if [[ $cword -eq 2 ]]; then
@@ -306,13 +306,21 @@ docker-build docker-up docker-join docker-list vcs cd --help --version"
                     COMPREPLY=( $(compgen -W "--no-rebase --help" -- "$cur") )
                     ;;
                 push)
-                    COMPREPLY=( $(compgen -W "--help" -- "$cur") )
+                    COMPREPLY=( $(compgen -W "--tags= --force --dry-run --help" -- "$cur") )
                     ;;
                 status)
                     COMPREPLY=( $(compgen -W "--show-branch --help" -- "$cur") )
                     ;;
                 update)
                     COMPREPLY=( $(compgen -W "--help" -- "$cur") )
+                    ;;
+                check)
+                    COMPREPLY=( $(compgen -W "--version-control --help" -- "$cur") )
+                    ;;
+                tag)
+                    # Tag name is a free-text positional; no completion source.
+                    # After the tag name, complete option flags.
+                    COMPREPLY=( $(compgen -W "--message= --lightweight --force --push --dry-run --help" -- "$cur") )
                     ;;
             esac
             ;;

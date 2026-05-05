@@ -98,9 +98,11 @@ _airlab_vcs() {
     vcs_commands=(
         'init:Clone repos from YAML'
         'pull:Pull repos'
-        'push:Push repos'
+        'push:Push repos (or a tag with --tags=)'
         'status:Show repo status'
         'update:Pull + init missing + pull again'
+        'check:Find drift across cloned repos or version_control YAMLs'
+        'tag:Recursively tag git repos under PWD'
     )
 
     local state line context
@@ -132,12 +134,34 @@ _airlab_vcs() {
                         '--no-rebase[do not rebase]' \
                         '--help[show help]'
                     ;;
-                push|update)
+                push)
+                    _arguments -s \
+                        '--tags=[push a named tag, deduplicated]:tag name:' \
+                        '--force[overwrite remote tag and skip drift gate]' \
+                        '--dry-run[show what would be pushed]' \
+                        '--help[show help]'
+                    ;;
+                update)
                     _arguments -s '--help[show help]'
                     ;;
                 status)
                     _arguments -s \
                         '--show-branch[show branch info]' \
+                        '--help[show help]'
+                    ;;
+                check)
+                    _arguments -s \
+                        '--version-control[scan version_control YAMLs instead of PWD]' \
+                        '--help[show help]'
+                    ;;
+                tag)
+                    _arguments -s \
+                        '--message=[annotated tag message]:message:' \
+                        '-m[annotated tag message]:message:' \
+                        '--lightweight[create a lightweight tag]' \
+                        '--force[overwrite existing local tag (and remote with --push)]' \
+                        '--push[push tag to origin, deduped]' \
+                        '--dry-run[show what would be done]' \
                         '--help[show help]'
                     ;;
             esac
