@@ -163,6 +163,7 @@ _airlab_vcs() {
                         '--force[overwrite existing local tag (and remote with --push)]' \
                         '--push[push tag to origin, deduped]' \
                         '--dry-run[show what would be done]' \
+                        '--no-progress[disable the progress bar]' \
                         '--help[show help]'
                     ;;
             esac

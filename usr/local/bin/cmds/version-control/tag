@@ -36,6 +36,9 @@ Options:
                          if shared clones are not on the same commit, unless
                          --force is also set.
   --dry-run              Print what would be done without making any changes.
+  --no-progress          Disable the progress bar shown during the initial
+                         scan and inspection phases (also auto-disabled
+                         when stderr is not a terminal).
   --help                 Show this help message and exit.
 
 Workflow:
@@ -85,12 +88,15 @@ do_tag() {
     local force=$5
     local push=$6
     local dry_run=$7
+    local progress=$8
 
-    python3 - "$base_dir" "$tag_name" "$message" "$lightweight" "$force" "$push" "$dry_run" <<'PYEOF'
+    python3 - "$base_dir" "$tag_name" "$message" "$lightweight" "$force" "$push" "$dry_run" "$progress" <<'PYEOF'
 import os
 import re
+import shutil
 import subprocess
 import sys
+import time
 from collections import defaultdict
 
 GREEN  = "\033[0;32m"
@@ -98,13 +104,56 @@ YELLOW = "\033[1;33m"
 RED    = "\033[0;31m"
 NC     = "\033[0m"
 
-base_dir    = os.path.abspath(sys.argv[1])
-tag_name    = sys.argv[2]
-message     = sys.argv[3]
-lightweight = sys.argv[4] == '1'
-force       = sys.argv[5] == '1'
-push        = sys.argv[6] == '1'
-dry_run     = sys.argv[7] == '1'
+base_dir       = os.path.abspath(sys.argv[1])
+tag_name       = sys.argv[2]
+message        = sys.argv[3]
+lightweight    = sys.argv[4] == '1'
+force          = sys.argv[5] == '1'
+push           = sys.argv[6] == '1'
+dry_run        = sys.argv[7] == '1'
+progress_flag  = sys.argv[8]   # "off" if user passed --no-progress
+show_progress  = (progress_flag != "off") and sys.stderr.isatty()
+
+# --- Progress bar plumbing -------------------------------------------------
+# Renders to stderr only on a TTY. Throttled to ~25 fps. Used during the
+# walk and per-repo inspection phases (the silent ones); the tag and push
+# loops below already emit per-item status lines on stdout, so a competing
+# stderr bar would be redundant there.
+_last_render = [0.0]
+
+def _term_width():
+    try:
+        return shutil.get_terminal_size((80, 20)).columns
+    except Exception:
+        return 80
+
+def progress_line(label, i, total, item, force_render=False):
+    if not show_progress:
+        return
+    now = time.monotonic()
+    if not force_render and (now - _last_render[0]) < 0.04:
+        return
+    _last_render[0] = now
+    width = _term_width()
+    bar_w = 20
+    pct   = (i / total) if total else 1.0
+    fill  = int(bar_w * pct)
+    bar   = "█" * fill + "░" * (bar_w - fill)
+    head  = f"[{bar}] {i}/{total}  {label}: "
+    space = max(0, width - len(head) - 1)
+    if len(item) > space:
+        item = "…" + item[-(space - 1):] if space > 1 else ""
+    line = head + item
+    pad = max(0, width - len(line) - 1)
+    sys.stderr.write("\r" + line + (" " * pad))
+    sys.stderr.flush()
+
+def progress_clear():
+    if not show_progress:
+        return
+    width = _term_width()
+    sys.stderr.write("\r" + (" " * (width - 1)) + "\r")
+    sys.stderr.flush()
 
 def git(repo, *args, timeout=30):
     r = subprocess.run(
@@ -134,6 +183,8 @@ def walk(path):
         if rc == 0 and out:
             return  # submodule, skip
         repos.append(path)
+        progress_line("scanning", len(repos), max(len(repos), 1),
+                      os.path.relpath(path, base_dir))
     elif os.path.isfile(git_path):
         return  # submodule or linked worktree, skip
     try:
@@ -148,6 +199,7 @@ def walk(path):
             walk(full)
 
 walk(base_dir)
+progress_clear()
 
 if not repos:
     print(f"{YELLOW}[INFO]{NC} No git repositories found under {base_dir}")
@@ -155,8 +207,10 @@ if not repos:
 
 # --- Collect per-repo state ---
 infos = []
-for repo in repos:
+total = len(repos)
+for idx, repo in enumerate(repos, start=1):
     rel = os.path.relpath(repo, base_dir)
+    progress_line("inspecting", idx, total, rel)
     rc1, url, _ = git(repo, 'config', '--get', 'remote.origin.url')
     rc2, sha, _ = git(repo, 'rev-parse', 'HEAD')
     rc3, st, _  = git(repo, 'status', '--porcelain')
@@ -168,6 +222,8 @@ for repo in repos:
         'sha':   sha if rc2 == 0 and sha else None,
         'dirty': bool(st),
     })
+
+progress_clear()
 
 # Warn (don't block) on dirty repos.
 dirty = [i for i in infos if i['dirty']]
@@ -323,6 +379,7 @@ main() {
     local PUSH=0
     local DRY_RUN=0
     local MESSAGE_SET=0
+    local PROGRESS="on"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -341,6 +398,9 @@ main() {
                 ;;
             --dry-run)
                 DRY_RUN=1
+                ;;
+            --no-progress)
+                PROGRESS="off"
                 ;;
             --message=*)
                 MESSAGE="${1#--message=}"
@@ -401,7 +461,7 @@ main() {
         MESSAGE="airlab vcs tag $TAG_NAME on $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     fi
 
-    do_tag "$PWD" "$TAG_NAME" "$MESSAGE" "$LIGHTWEIGHT" "$FORCE" "$PUSH" "$DRY_RUN"
+    do_tag "$PWD" "$TAG_NAME" "$MESSAGE" "$LIGHTWEIGHT" "$FORCE" "$PUSH" "$DRY_RUN" "$PROGRESS"
 }
 
 # Run main function

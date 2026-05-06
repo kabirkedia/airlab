@@ -320,7 +320,7 @@ docker-build docker-up docker-join docker-list vcs cd --help --version"
                 tag)
                     # Tag name is a free-text positional; no completion source.
                     # After the tag name, complete option flags.
-                    COMPREPLY=( $(compgen -W "--message= --lightweight --force --push --dry-run --help" -- "$cur") )
+                    COMPREPLY=( $(compgen -W "--message= --lightweight --force --push --dry-run --no-progress --help" -- "$cur") )
                     ;;
             esac
             ;;

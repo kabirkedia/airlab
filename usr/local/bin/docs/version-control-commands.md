@@ -180,6 +180,7 @@ airlab vcs tag <tag_name> [OPTIONS]
 - `--force`: Overwrite an existing local tag. With `--push`, also overwrites the remote tag and skips the drift gate.
 - `--push`: After tagging, push the tag to origin once per unique remote URL. Refuses to push if shared clones are not on the same commit, unless `--force` is also set. The repo with the lexicographically smallest path is chosen as the source for each push.
 - `--dry-run`: Print what would be done without making any changes.
+- `--no-progress`: Disable the progress bar shown during the initial scan and inspection phases (also auto-disabled when stderr is not a terminal).
 - `--help`: Display help message.
 
 ### Features
