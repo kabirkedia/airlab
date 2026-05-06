@@ -152,6 +152,7 @@ _airlab_vcs() {
                 check)
                     _arguments -s \
                         '--version-control[scan version_control YAMLs instead of PWD]' \
+                        '--no-progress[disable the progress bar]' \
                         '--help[show help]'
                     ;;
                 tag)

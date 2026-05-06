@@ -315,7 +315,7 @@ docker-build docker-up docker-join docker-list vcs cd --help --version"
                     COMPREPLY=( $(compgen -W "--help" -- "$cur") )
                     ;;
                 check)
-                    COMPREPLY=( $(compgen -W "--version-control --help" -- "$cur") )
+                    COMPREPLY=( $(compgen -W "--version-control --no-progress --help" -- "$cur") )
                     ;;
                 tag)
                     # Tag name is a free-text positional; no completion source.

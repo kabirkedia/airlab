@@ -140,6 +140,7 @@ airlab vcs check [OPTIONS]
 
 ### Options
 - `--version-control`: Scan YAMLs in `$AIRLAB_PATH/version_control/` instead of walking PWD.
+- `--no-progress`: Disable the progress bar (also auto-disabled when stderr is not a terminal).
 - `--help`: Display help message.
 
 ### Features
