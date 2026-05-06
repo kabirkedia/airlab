@@ -171,7 +171,7 @@ _airlab_completions() {
 
     # Top-level commands
     local commands="greet setup ssh auth ping sync launch set_env set_hosts \
-docker-build docker-up docker-join docker-list vcs cd --help --version"
+docker-build docker-up docker-join docker-list docker-clean vcs cd --help --version"
 
     # Position 1: complete the sub-command
     if [[ $cword -eq 1 ]]; then
@@ -276,6 +276,10 @@ docker-build docker-up docker-join docker-list vcs cd --help --version"
 
         docker-list)
             COMPREPLY=( $(compgen -W "--system= --images --password --help" -- "$cur") )
+            ;;
+
+        docker-clean)
+            COMPREPLY=( $(compgen -W "--system= --yes -y --password --help" -- "$cur") )
             ;;
 
         cd)
