@@ -11,9 +11,11 @@ function show_usage() {
     echo "Available commands:"
     echo "  init    Initialize a new AirLab project"
     echo "  pull    Pull changes from the remote repository"
-    echo "  push    Push local changes to the remote repository"
+    echo "  push    Push local changes to the remote repository (or a tag with --tags=)"
     echo "  status  Show the current status of the AirLab project"
     echo "  update  Pull, init missing repos, and pull again with summary"
+    echo "  check   Find drift across cloned repos or across version_control YAMLs"
+    echo "  tag     Recursively tag all git repos under the current directory"
     echo
     echo "Options:"
     echo "  --help  Show this help message"
@@ -55,6 +57,14 @@ case "$COMMAND" in
     update)
         # Pull, init missing repos, pull again
         /usr/local/bin/cmds/version-control/update "$@"
+        ;;
+    check)
+        # Drift check (filesystem walk or version_control YAMLs)
+        /usr/local/bin/cmds/version-control/check "$@"
+        ;;
+    tag)
+        # Recursively tag all repos under PWD
+        /usr/local/bin/cmds/version-control/tag "$@"
         ;;
     --help)
         show_usage
