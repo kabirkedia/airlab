@@ -187,6 +187,7 @@ _airlab() {
         'docker-up:Start Docker containers using docker-compose'
         'docker-join:Attach to a running Docker container'
         'docker-list:List active Docker containers'
+        'docker-clean:Stop and remove all Docker containers'
         'vcs:Manage multiple repositories with common git functions'
         'cd:Change directory relative to \$AIRLAB_PATH'
     )
@@ -323,6 +324,15 @@ _airlab() {
                     _arguments -s \
                         '--system=[system name]:system:' \
                         '--images[list images]' \
+                        '--password[use password auth]' \
+                        '--help[show help]'
+                    ;;
+
+                docker-clean)
+                    _arguments -s \
+                        '--system=[system name]:system:' \
+                        '--yes[skip confirmation prompt]' \
+                        '-y[skip confirmation prompt]' \
                         '--password[use password auth]' \
                         '--help[show help]'
                     ;;

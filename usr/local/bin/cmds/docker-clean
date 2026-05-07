@@ -1,0 +1,183 @@
+#!/bin/bash
+
+# Exit on error, undefined variables, and pipe failures
+set -uo pipefail
+
+# Color codes for output
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly NC='\033[0m' # No Color
+
+# Logging functions
+log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
+
+show_usage() {
+    echo -e "${YELLOW}Usage:${NC}"
+    echo "  airlab docker-clean [--system=<system_name>] [--yes]"
+    echo
+    echo "Stops and removes ALL Docker containers (running or stopped)."
+    echo "Equivalent to: docker stop \$(docker ps -a -q) && docker rm \$(docker ps -a -q)"
+    echo
+    echo -e "${YELLOW}Options:${NC}"
+    echo "  --system=<system_name>    Run against a remote robot listed in robot.conf."
+    echo "  --yes, -y                 Skip the confirmation prompt."
+    echo "  --password                Skip key-based SSH and prompt for password directly."
+    echo "  --help                    Display this help message."
+    echo
+    echo -e "${YELLOW}Examples:${NC}"
+    echo "  airlab docker-clean"
+    echo "  airlab docker-clean --yes"
+    echo "  airlab docker-clean --system=robot1"
+}
+
+ssh_authenticate() {
+    local ssh_address=$1
+    local force_password=${2:-false}
+    robot_password=""
+
+    if [[ "$force_password" == false ]]; then
+        log_info "Attempting key-based SSH to $ssh_address..."
+        if ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no -o BatchMode=yes "$ssh_address" exit 2>/dev/null; then
+            log_info "Key-based SSH connection successful"
+            return 0
+        fi
+        log_warn "Key-based SSH failed. Falling back to password authentication."
+    fi
+
+    if ! command -v sshpass >/dev/null 2>&1; then
+        log_error "Key-based SSH failed and 'sshpass' is not installed for password fallback."
+        log_error "Either set up SSH keys or install sshpass: sudo apt install sshpass"
+        return 1
+    fi
+
+    log_info "Enter password for $ssh_address:"
+    read -s robot_password
+    [[ -z "$robot_password" ]] && log_error "Password cannot be empty" && return 1
+    echo
+
+    if ! sshpass -p "$robot_password" ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "$ssh_address" exit; then
+        log_error "Cannot connect to remote system '$ssh_address'"
+        return 1
+    fi
+    log_info "SSH connection successful"
+    return 0
+}
+
+check_dependencies() {
+    local deps=("docker" "ssh")
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" >/dev/null 2>&1; then
+            log_error "Required dependency '$dep' is not installed."
+            exit 1
+        fi
+    done
+}
+
+# The shell snippet executed locally or remotely. Lists all containers,
+# exits cleanly when there are none, otherwise stops then removes them.
+clean_script() {
+    cat <<'EOF'
+set -u
+ids=$(docker ps -a -q)
+if [ -z "$ids" ]; then
+    echo "[INFO] No containers to clean."
+    exit 0
+fi
+echo "[INFO] Stopping containers..."
+docker stop $ids
+echo "[INFO] Removing containers..."
+docker rm $ids
+EOF
+}
+
+confirm() {
+    local target_label=$1
+    echo -ne "${YELLOW}This will stop and remove ALL Docker containers on ${target_label}. Continue? [y/N]${NC} "
+    local reply
+    read -r reply
+    [[ "$reply" =~ ^[Yy]$ ]]
+}
+
+main() {
+    check_dependencies
+
+    local SYSTEM_NAME=""
+    local FORCE_PASSWORD=false
+    local ASSUME_YES=false
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --system=*)
+                SYSTEM_NAME="${1#--system=}"
+                ;;
+            --yes|-y)
+                ASSUME_YES=true
+                ;;
+            --password)
+                FORCE_PASSWORD=true
+                ;;
+            --help)
+                show_usage
+                exit 0
+                ;;
+            *)
+                log_error "Invalid option: $1"
+                show_usage
+                exit 1
+                ;;
+        esac
+        shift
+    done
+
+    local script
+    script=$(clean_script)
+
+    if [[ -n "$SYSTEM_NAME" ]]; then
+        local ROBOT_CONF="$AIRLAB_PATH/robot/robot.conf"
+        if [[ ! -f "$ROBOT_CONF" ]]; then
+            log_error "Robot configuration file not found at '$ROBOT_CONF'"
+            exit 1
+        fi
+
+        local ROBOT_SSH_ADDRESS
+        ROBOT_SSH_ADDRESS=$(grep "^$SYSTEM_NAME=" "$ROBOT_CONF" | cut -d= -f2)
+        if [[ -z "$ROBOT_SSH_ADDRESS" ]]; then
+            log_error "System '$SYSTEM_NAME' not found in $ROBOT_CONF"
+            exit 1
+        fi
+
+        if [[ "$ASSUME_YES" != true ]]; then
+            confirm "$SYSTEM_NAME ($ROBOT_SSH_ADDRESS)" || { log_info "Aborted."; exit 0; }
+        fi
+
+        robot_password=""
+        if ! ssh_authenticate "$ROBOT_SSH_ADDRESS" "$FORCE_PASSWORD"; then
+            exit 1
+        fi
+
+        local SSHPASS_PREFIX=()
+        if [[ -n "$robot_password" ]]; then
+            SSHPASS_PREFIX=(sshpass -p "$robot_password")
+        fi
+
+        log_info "Cleaning Docker containers on $ROBOT_SSH_ADDRESS"
+        if ! "${SSHPASS_PREFIX[@]}" ssh "$ROBOT_SSH_ADDRESS" "bash -s" <<<"$script"; then
+            log_error "Failed to clean docker containers on $SYSTEM_NAME"
+            exit 1
+        fi
+    else
+        if [[ "$ASSUME_YES" != true ]]; then
+            confirm "the local system" || { log_info "Aborted."; exit 0; }
+        fi
+
+        log_info "Cleaning Docker containers on local system"
+        if ! bash -c "$script"; then
+            log_error "Failed to clean docker containers locally"
+            exit 1
+        fi
+    fi
+}
+
+main "$@"

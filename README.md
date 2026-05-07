@@ -573,6 +573,31 @@ airlab docker-up [OPTIONS]
 *   `--password`: Skip key-based SSH authentication and prompt for a password directly.
 *   `--help`: Display help message.
 
+#### docker-clean
+
+Stops and removes **all** Docker containers (running or stopped) on the local machine or a remote robot. Equivalent to `docker stop $(docker ps -a -q) && docker rm $(docker ps -a -q)`, but no-ops cleanly when there are no containers. Prompts for confirmation by default since this is destructive.
+
+##### Usage
+
+```bash
+airlab docker-clean [OPTIONS]
+```
+
+##### Options
+
+*   `--system=<system_name>`: Target system for remote operations.
+*   `--yes`, `-y`: Skip the confirmation prompt.
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly.
+*   `--help`: Display help message.
+
+##### Quick Examples
+
+```bash
+airlab docker-clean                  # local, with confirmation
+airlab docker-clean --yes            # local, no prompt
+airlab docker-clean --system=mt001   # clean every container on mt001
+```
+
 #### Common Features
 
 *   **Remote Operations**: Requires a valid system definition in `robot.conf`, SSH credentials, and correct configuration in `robot_info.yaml`.
