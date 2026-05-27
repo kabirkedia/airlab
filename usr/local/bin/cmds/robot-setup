@@ -175,9 +175,6 @@ setup_local() {
                     sed -i "s|^USER_ID=.*|USER_ID=$current_uid|g" "$env_file"
                     sed -i "s|^GROUP_ID=.*|GROUP_ID=$current_gid|g" "$env_file"
                     sed -i "s|^AIRLAB_PATH=.*|AIRLAB_PATH=$airlab_path|g" "$env_file"
-                    sed -i "s|^DOCKER_BUILD_PATH=.*|DOCKER_BUILD_PATH=$airlab_path/docker/docker-compose.yml|g" "$env_file"
-                    sed -i "s|^DOCKER_UP_PATH=.*|DOCKER_UP_PATH=$airlab_path/docker/docker-compose.yml|g" "$env_file"
-                    sed -i "s|^LAUNCH_FILE_PATH=.*|LAUNCH_FILE_PATH=$airlab_path/launch/sample.yaml|g" "$env_file"
 
                     log_info "Environment file updated successfully."
                 else
