@@ -35,7 +35,7 @@
 *   **File Synchronization:**  Provides an easy and efficient method for transferring files between local and remote systems.
 *   **Launch Management:** Simplifies the process of launching and managing robotic system launch files, especially using `tmux` sessions.
 *   **Environment Setup:** Automates the configuration of necessary environments on remote systems.
-*   **Multi-Repository Workflows:** Beyond `vcstool`'s init/pull/push/status, the `vcs` family also supports cross-workspace **drift detection** (`airlab vcs check`) and **recursive tagging with deduplicated push** (`airlab vcs tag`), which is essential when the same source repository is cloned across many sub-workspaces.
+*   **Multi-Repository Workflows:** Beyond `vcstool`'s init/pull/push/status, the `vcs` family also supports cross-workspace **drift detection** (`airlab vcs check`), **recursive tagging with deduplicated push** (`airlab vcs tag`), and **recursive branch / tag checkout with a colored post-state summary** (`airlab vcs checkout`), which are essential when the same source repository is cloned across many sub-workspaces.
 *   **Unified Interface:** Consolidates various tools and processes into a single command-line utility.
 *   **Debian Package:**  Offers a simple and reliable installation and update mechanism via a Debian package.
 
@@ -122,7 +122,7 @@ After installing airlab you can run the command to setup the environment `airlab
 *   **Paths:** `airlab sync <robot> --path=<TAB>` and `--exclude=<TAB>` complete with files and directories under `$AIRLAB_PATH`.
 *   **Docker containers:** `airlab docker-join --name=<TAB>` completes with currently running Docker container names.
 *   **VCS repo files:** `airlab vcs init --repo_file=<TAB>` completes with `.yaml`/`.yml` files (and subdirectories) under `$AIRLAB_PATH/version_control/`.
-*   **VCS sub-commands:** `airlab vcs <TAB>` lists `init`, `pull`, `push`, `status`, `update`, `check`, and `tag`, each with their own option completions.
+*   **VCS sub-commands:** `airlab vcs <TAB>` lists `init`, `pull`, `push`, `status`, `update`, `check`, `tag`, and `checkout`, each with their own option completions.
 
 To manually reload the completion script (e.g., during development):
 
@@ -800,9 +800,60 @@ airlab vcs tag v1.0.0 --push --force                 # overwrite remote tag
 airlab vcs tag v1.0.0 --dry-run                      # preview only
 ```
 
+#### `airlab vcs checkout <ref>` — Recursive Branch / Tag Checkout
+
+Recursively run `git checkout <ref>` in every repository under the current directory, skipping submodules. `<ref>` may be a branch or tag. After each checkout, the new state is summarized in a colored table.
+
+##### Usage
+
+```bash
+airlab vcs checkout <ref> [OPTIONS]
+```
+
+##### Arguments
+
+*   `<ref>`: Branch or tag name to check out.
+
+##### Options
+
+*   `--no-fetch`: Skip `git fetch --tags origin` before checkout. Faster, but tag availability and ahead/behind counts may be stale.
+*   `--force`, `-f`: Pass `-f` to `git checkout`, discarding local uncommitted changes. Use with care.
+*   `--no-progress`: Disable the progress bar (also auto-disabled when stderr is not a terminal).
+*   `--help`: Display help message.
+
+##### Behavior
+
+*   Walks PWD with the same logic as `airlab vcs check` (skips submodules and linked worktrees).
+*   Fetches `--tags` from `origin` per repo unless `--no-fetch` (so tag availability and ahead/behind are accurate).
+*   If `<ref>` exists on `origin` but not yet locally, git's DWIM creates a tracking branch.
+*   If `<ref>` is a tag, the result is a detached HEAD (reported as `on tag`).
+*   If `<ref>` does not exist on the repo (no local branch, no tag, no `origin/<ref>`), the row reports `ref MISSING`.
+*   Dirty trees that would be clobbered are reported as `FAILED (dirty)` and skipped; `--force` overrides.
+*   After each successful checkout, ahead/behind upstream is computed (when on a branch with tracking), and submodule SHA changes are counted.
+
+##### Output
+
+Per-repo row colored by status:
+
+*   **green** `ok` — checked out, on ref, up to date (or no remote to compare).
+*   **yellow** `warn` — checked out but ahead/behind upstream, or submodule SHAs changed.
+*   **red** `err` — `ref MISSING`, `FAILED`, `FAILED (dirty)`, or `fetch FAILED`.
+
+Rows are sorted err → warn → ok. A summary line counts each status bucket. Exit code is 0 only when every row is `ok`.
+
+##### Quick Examples
+
+```bash
+airlab vcs checkout main                  # branch checkout in every repo (fetches first)
+airlab vcs checkout v1.0.0                # tag checkout; missing-tag repos are flagged
+airlab vcs checkout strapsai/main         # also a branch — pulled from origin if needed
+airlab vcs checkout main --no-fetch       # already fetched recently, skip
+airlab vcs checkout main --force          # discard local uncommitted changes
+```
+
 #### Progress Bar
 
-Both `vcs check` (filesystem mode) and `vcs tag` show a progress bar on stderr during their two silent phases — the directory walk and the per-repo `git config` / `rev-parse` / `status` collection. Across hundreds of repositories these phases would otherwise look hung.
+`vcs check` (filesystem mode), `vcs tag`, and `vcs checkout` show a progress bar on stderr during their silent phases — the directory walk and the per-repo `git` invocations. Across hundreds of repositories these phases would otherwise look hung.
 
 ```
 [████████░░░░░░░░░░░░] 145/347  inspecting: ws/src/path/to/repo

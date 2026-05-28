@@ -16,6 +16,7 @@ function show_usage() {
     echo "  update  Pull, init missing repos, and pull again with summary"
     echo "  check   Find drift across cloned repos or across version_control YAMLs"
     echo "  tag     Recursively tag all git repos under the current directory"
+    echo "  checkout  Recursively git checkout <ref> in every repo under PWD"
     echo
     echo "Options:"
     echo "  --help  Show this help message"
@@ -65,6 +66,10 @@ case "$COMMAND" in
     tag)
         # Recursively tag all repos under PWD
         /usr/local/bin/cmds/version-control/tag "$@"
+        ;;
+    checkout)
+        # Recursively checkout a ref in every repo under PWD
+        /usr/local/bin/cmds/version-control/checkout "$@"
         ;;
     --help)
         show_usage

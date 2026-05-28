@@ -103,6 +103,7 @@ _airlab_vcs() {
         'update:Pull + init missing + pull again'
         'check:Find drift across cloned repos or version_control YAMLs'
         'tag:Recursively tag git repos under PWD'
+        'checkout:Recursively git checkout <ref> in every repo under PWD'
     )
 
     local state line context
@@ -163,6 +164,14 @@ _airlab_vcs() {
                         '--force[overwrite existing local tag (and remote with --push)]' \
                         '--push[push tag to origin, deduped]' \
                         '--dry-run[show what would be done]' \
+                        '--no-progress[disable the progress bar]' \
+                        '--help[show help]'
+                    ;;
+                checkout)
+                    _arguments -s \
+                        '--no-fetch[skip git fetch --tags before checkout]' \
+                        '--force[discard local uncommitted changes (-f to git checkout)]' \
+                        '-f[discard local uncommitted changes (-f to git checkout)]' \
                         '--no-progress[disable the progress bar]' \
                         '--help[show help]'
                     ;;

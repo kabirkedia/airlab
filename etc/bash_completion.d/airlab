@@ -288,7 +288,7 @@ docker-build docker-up docker-join docker-list docker-clean vcs cd --help --vers
             ;;
 
         vcs)
-            local vcs_commands="init pull push status update check tag --help"
+            local vcs_commands="init pull push status update check tag checkout --help"
 
             # Position 2: vcs sub-command
             if [[ $cword -eq 2 ]]; then
@@ -325,6 +325,11 @@ docker-build docker-up docker-join docker-list docker-clean vcs cd --help --vers
                     # Tag name is a free-text positional; no completion source.
                     # After the tag name, complete option flags.
                     COMPREPLY=( $(compgen -W "--message= --lightweight --force --push --dry-run --no-progress --help" -- "$cur") )
+                    ;;
+                checkout)
+                    # <ref> is a free-text positional; no completion source.
+                    # After the ref, complete option flags.
+                    COMPREPLY=( $(compgen -W "--no-fetch --force --no-progress --help" -- "$cur") )
                     ;;
             esac
             ;;
