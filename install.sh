@@ -133,6 +133,27 @@ if [ -z "$STAGING_DIR" ] || [ ! -d "$STAGING_DIR" ] || [ "$STAGING_DIR" = "/" ] 
 fi
 trap 'rm -rf "$STAGING_DIR"' EXIT
 cp -a "$SCRIPT_DIR/DEBIAN" "$SCRIPT_DIR/etc" "$SCRIPT_DIR/usr" "$STAGING_DIR/"
+
+# Auto-detect install source from this checkout's git origin and overwrite the
+# staged usr/share/airlab/install_source. This means a fork's local rebuild
+# always produces a .deb pointing at that fork, regardless of what the in-repo
+# file says — so a cross-fork merge that drags the wrong install_source value
+# in is self-correcting on next build. If origin can't be parsed (no .git, or
+# a non-GitHub remote), we leave the static file value in place as the fallback.
+if origin_url=$(git -C "$SCRIPT_DIR" remote get-url origin 2>/dev/null); then
+    detected="${origin_url#*github.com}"
+    detected="${detected#:}"
+    detected="${detected#/}"
+    [[ "$detected" =~ ^[0-9]+/ ]] && detected="${detected#*/}"
+    detected="${detected%.git}"
+    detected="${detected%/}"
+    if [[ "$detected" =~ ^[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+$ ]]; then
+        mkdir -p "$STAGING_DIR/usr/share/airlab"
+        echo "$detected" > "$STAGING_DIR/usr/share/airlab/install_source"
+        echo "Recorded install source from git origin: $detected"
+    fi
+fi
+
 dpkg-deb --build "$STAGING_DIR" "$SCRIPT_DIR/../airlab.deb"
 
 # Install the DEB package.

@@ -449,23 +449,83 @@ setup_remote() {
 
     # Setup remote environment
     log_info "Setting up remote environment..."
+
+    # Robot gets a fresh clone of origin/main of the local $AIRLAB_PATH,
+    # not the host's working tree. Keeps fleet state canonical.
+    # All git ops run as $SUDO_USER: the local repo is owned by them (modern
+    # git refuses cross-user reads), and `git clone` over SSH needs their keys.
+    local -a as_user
+    if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
+        as_user=(sudo -u "$SUDO_USER" --)
+    else
+        as_user=()
+    fi
+
+    local origin_url
+    origin_url=$("${as_user[@]}" git -C "$remote_path" remote get-url origin 2>/dev/null) \
+        || error_exit "$remote_path is not a git repo (or has no 'origin'); cannot resolve source for remote install"
+
+    log_info "Source: $origin_url (main)"
+    "${as_user[@]}" git -C "$remote_path" fetch --quiet origin main 2>/dev/null \
+        || log_warn "Could not fetch origin/main; comparison may be stale"
+
+    local ahead_commits dirty_files
+    ahead_commits=$("${as_user[@]}" git -C "$remote_path" log --oneline origin/main..HEAD 2>/dev/null)
+    dirty_files=$("${as_user[@]}" git -C "$remote_path" status -s 2>/dev/null)
+
+    if [[ -n "$ahead_commits" || -n "$dirty_files" ]]; then
+        log_warn "Local $remote_path differs from origin/main; the changes below will NOT land on the robot:"
+        if [[ -n "$ahead_commits" ]]; then
+            echo "  Commits ahead of origin/main:"
+            echo "$ahead_commits" | sed 's/^/    /'
+        fi
+        if [[ -n "$dirty_files" ]]; then
+            echo "  Uncommitted changes:"
+            echo "$dirty_files" | sed 's/^/    /'
+        fi
+        if [ "$force" = true ]; then
+            log_warn "Force flag set; proceeding with origin/main only."
+        else
+            read -p "Proceed with origin/main on the robot? (y/N): " confirm
+            [[ ! "$confirm" =~ ^[Yy]$ ]] && error_exit "Setup cancelled"
+        fi
+    fi
+
+    local clone_dir
+    clone_dir="$("${as_user[@]}" mktemp -d -t airlab-ws-clone.XXXXXX)"
+    if [ -z "$clone_dir" ] || [ ! -d "$clone_dir" ] || [ "$clone_dir" = "/" ] || [ "${clone_dir#/}" = "$clone_dir" ]; then
+        error_exit "Refusing to proceed: invalid clone tmp dir: '$clone_dir'"
+    fi
+    trap "rm -rf '$clone_dir'" EXIT
+    log_info "Cloning $origin_url (main) into $clone_dir/airlab_ws ..."
+    "${as_user[@]}" git clone --depth 1 --branch main "$origin_url" "$clone_dir/airlab_ws" \
+        || error_exit "Failed to clone $origin_url (main)"
+
     # Create directory structure
     remote_exec "$robot_ssh_address" "mkdir -p $airlab_path" "$robot_password"
 
     # Copy files
-    log_info "Copying configuration files..."
+    log_info "Copying configuration files to robot..."
     "${SSHPASS_PREFIX[@]}" rsync -avz --exclude='.git' \
-        "$remote_path/" "$robot_ssh_address:$airlab_path/" || error_exit "Failed to copy files"
+        "$clone_dir/airlab_ws/" "$robot_ssh_address:$airlab_path/" || error_exit "Failed to copy files"
+
+    # Resolve install source — recorded at .deb-build time so each fork's
+    # package fetches from its own repo without baking the URL into code.
+    local source_repo source_url
+    source_repo=$(cat /usr/share/airlab/install_source 2>/dev/null || echo "strapsai/airlab")
+    source_url="https://github.com/${source_repo}/archive/refs/heads/main.zip"
 
     # Install package if needed
     if ! "${SSHPASS_PREFIX[@]}" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "dpkg -l | grep -q '^ii.*airlab'" ; then
         log_info "Installing airlab package..."
-        sudo curl -L -o /tmp/airlab.zip https://github.com/kabirkedia/airlab/archive/refs/heads/main.zip
+        sudo curl -L -o /tmp/airlab.zip "$source_url"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S rm -rf /tmp/airlab-main /tmp/airlab-main.deb /tmp/airlab.zip" "$robot_password"
         remote_copy "/tmp/airlab.zip" "$robot_ssh_address:/tmp/airlab.zip" "$robot_password"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S unzip -o /tmp/airlab.zip -d /tmp/" "$robot_password"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S chmod a+x -R /tmp/airlab-main" "$robot_password"
-        remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S echo "HERE" && bash /tmp/airlab-main/install.sh" "$robot_password"
+        # ssh -tt: pty makes sudo's timestamp cache survive into install.sh's internal sudo calls. install.sh must run as user (not root) so its ~/VENVs and ~/.bashrc edits use the right $HOME.
+        "${SSHPASS_PREFIX[@]}" ssh -tt -o StrictHostKeyChecking=no "$robot_ssh_address" "echo '$robot_password' | sudo -S echo HERE && bash /tmp/airlab-main/install.sh" \
+            || error_exit "Failed to run install.sh on $robot_ssh_address"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg-deb --build /tmp/airlab-main" "$robot_password"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg -i /tmp/airlab-main.deb" "$robot_password" "warn"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S apt-get install -f -y" "$robot_password"
@@ -476,13 +536,15 @@ setup_remote() {
             log_warn "Skipping installation"
         else
             log_info "Installing airlab package..."
-            sudo curl -L -o /tmp/airlab.zip https://github.com/kabirkedia/airlab/archive/refs/heads/main.zip
+            sudo curl -L -o /tmp/airlab.zip "$source_url"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S rm -rf /tmp/airlab-main /tmp/airlab-main.deb /tmp/airlab.zip" "$robot_password"
             remote_copy "/tmp/airlab.zip" "$robot_ssh_address:/tmp/airlab.zip" "$robot_password"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S unzip -o /tmp/airlab.zip -d /tmp/" "$robot_password"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S chmod a+x -R /tmp/airlab-main" "$robot_password"
-            remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S echo "HERE" && bash /tmp/airlab-main/install.sh" "$robot_password"
-            remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg-deb --build /tmp/airlab-main" "$robot_password" 
+            # ssh -tt: pty makes sudo's timestamp cache survive into install.sh's internal sudo calls. install.sh must run as user (not root) so its ~/VENVs and ~/.bashrc edits use the right $HOME.
+            "${SSHPASS_PREFIX[@]}" ssh -tt -o StrictHostKeyChecking=no "$robot_ssh_address" "echo '$robot_password' | sudo -S echo HERE && bash /tmp/airlab-main/install.sh" \
+                || error_exit "Failed to run install.sh on $robot_ssh_address"
+            remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg-deb --build /tmp/airlab-main" "$robot_password"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg -i /tmp/airlab-main.deb" "$robot_password" "warn"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S apt-get install -f -y" "$robot_password"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S rm -rf /tmp/airlab-main /tmp/airlab-main.deb /tmp/airlab.zip" "$robot_password"
