@@ -457,10 +457,16 @@ setup_remote() {
     "${SSHPASS_PREFIX[@]}" rsync -avz --exclude='.git' \
         "$remote_path/" "$robot_ssh_address:$airlab_path/" || error_exit "Failed to copy files"
 
+    # Resolve install source — recorded at .deb-build time so each fork's
+    # package fetches from its own repo without baking the URL into code.
+    local source_repo source_url
+    source_repo=$(cat /usr/share/airlab/install_source 2>/dev/null || echo "strapsai/airlab")
+    source_url="https://github.com/${source_repo}/archive/refs/heads/main.zip"
+
     # Install package if needed
     if ! "${SSHPASS_PREFIX[@]}" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "dpkg -l | grep -q '^ii.*airlab'" ; then
         log_info "Installing airlab package..."
-        sudo curl -L -o /tmp/airlab.zip https://github.com/strapsai/airlab/archive/refs/heads/main.zip
+        sudo curl -L -o /tmp/airlab.zip "$source_url"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S rm -rf /tmp/airlab-main /tmp/airlab-main.deb /tmp/airlab.zip" "$robot_password"
         remote_copy "/tmp/airlab.zip" "$robot_ssh_address:/tmp/airlab.zip" "$robot_password"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S unzip -o /tmp/airlab.zip -d /tmp/" "$robot_password"
@@ -478,7 +484,7 @@ setup_remote() {
             log_warn "Skipping installation"
         else
             log_info "Installing airlab package..."
-            sudo curl -L -o /tmp/airlab.zip https://github.com/strapsai/airlab/archive/refs/heads/main.zip
+            sudo curl -L -o /tmp/airlab.zip "$source_url"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S rm -rf /tmp/airlab-main /tmp/airlab-main.deb /tmp/airlab.zip" "$robot_password"
             remote_copy "/tmp/airlab.zip" "$robot_ssh_address:/tmp/airlab.zip" "$robot_password"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S unzip -o /tmp/airlab.zip -d /tmp/" "$robot_password"
