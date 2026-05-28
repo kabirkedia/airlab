@@ -460,12 +460,14 @@ setup_remote() {
     # Install package if needed
     if ! "${SSHPASS_PREFIX[@]}" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "dpkg -l | grep -q '^ii.*airlab'" ; then
         log_info "Installing airlab package..."
-        sudo curl -L -o /tmp/airlab.zip https://github.com/kabirkedia/airlab/archive/refs/heads/main.zip
+        sudo curl -L -o /tmp/airlab.zip https://github.com/strapsai/airlab/archive/refs/heads/main.zip
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S rm -rf /tmp/airlab-main /tmp/airlab-main.deb /tmp/airlab.zip" "$robot_password"
         remote_copy "/tmp/airlab.zip" "$robot_ssh_address:/tmp/airlab.zip" "$robot_password"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S unzip -o /tmp/airlab.zip -d /tmp/" "$robot_password"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S chmod a+x -R /tmp/airlab-main" "$robot_password"
-        remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S echo "HERE" && bash /tmp/airlab-main/install.sh" "$robot_password"
+        # ssh -tt: pty makes sudo's timestamp cache survive into install.sh's internal sudo calls. install.sh must run as user (not root) so its ~/VENVs and ~/.bashrc edits use the right $HOME.
+        "${SSHPASS_PREFIX[@]}" ssh -tt -o StrictHostKeyChecking=no "$robot_ssh_address" "echo '$robot_password' | sudo -S echo HERE && bash /tmp/airlab-main/install.sh" \
+            || error_exit "Failed to run install.sh on $robot_ssh_address"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg-deb --build /tmp/airlab-main" "$robot_password"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg -i /tmp/airlab-main.deb" "$robot_password" "warn"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S apt-get install -f -y" "$robot_password"
@@ -476,13 +478,15 @@ setup_remote() {
             log_warn "Skipping installation"
         else
             log_info "Installing airlab package..."
-            sudo curl -L -o /tmp/airlab.zip https://github.com/kabirkedia/airlab/archive/refs/heads/main.zip
+            sudo curl -L -o /tmp/airlab.zip https://github.com/strapsai/airlab/archive/refs/heads/main.zip
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S rm -rf /tmp/airlab-main /tmp/airlab-main.deb /tmp/airlab.zip" "$robot_password"
             remote_copy "/tmp/airlab.zip" "$robot_ssh_address:/tmp/airlab.zip" "$robot_password"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S unzip -o /tmp/airlab.zip -d /tmp/" "$robot_password"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S chmod a+x -R /tmp/airlab-main" "$robot_password"
-            remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S echo "HERE" && bash /tmp/airlab-main/install.sh" "$robot_password"
-            remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg-deb --build /tmp/airlab-main" "$robot_password" 
+            # ssh -tt: pty makes sudo's timestamp cache survive into install.sh's internal sudo calls. install.sh must run as user (not root) so its ~/VENVs and ~/.bashrc edits use the right $HOME.
+            "${SSHPASS_PREFIX[@]}" ssh -tt -o StrictHostKeyChecking=no "$robot_ssh_address" "echo '$robot_password' | sudo -S echo HERE && bash /tmp/airlab-main/install.sh" \
+                || error_exit "Failed to run install.sh on $robot_ssh_address"
+            remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg-deb --build /tmp/airlab-main" "$robot_password"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg -i /tmp/airlab-main.deb" "$robot_password" "warn"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S apt-get install -f -y" "$robot_password"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S rm -rf /tmp/airlab-main /tmp/airlab-main.deb /tmp/airlab.zip" "$robot_password"
