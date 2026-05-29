@@ -98,9 +98,12 @@ _airlab_vcs() {
     vcs_commands=(
         'init:Clone repos from YAML'
         'pull:Pull repos'
-        'push:Push repos'
+        'push:Push repos (or a tag with --tags=)'
         'status:Show repo status'
         'update:Pull + init missing + pull again'
+        'check:Find drift across cloned repos or version_control YAMLs'
+        'tag:Recursively tag git repos under PWD'
+        'checkout:Recursively git checkout a branch or tag in every repo under PWD'
     )
 
     local state line context
@@ -132,12 +135,44 @@ _airlab_vcs() {
                         '--no-rebase[do not rebase]' \
                         '--help[show help]'
                     ;;
-                push|update)
+                push)
+                    _arguments -s \
+                        '--tags=[push a named tag, deduplicated]:tag name:' \
+                        '--force[overwrite remote tag and skip drift gate]' \
+                        '--dry-run[show what would be pushed]' \
+                        '--help[show help]'
+                    ;;
+                update)
                     _arguments -s '--help[show help]'
                     ;;
                 status)
                     _arguments -s \
                         '--show-branch[show branch info]' \
+                        '--help[show help]'
+                    ;;
+                check)
+                    _arguments -s \
+                        '--version-control[scan version_control YAMLs instead of PWD]' \
+                        '--no-progress[disable the progress bar]' \
+                        '--help[show help]'
+                    ;;
+                tag)
+                    _arguments -s \
+                        '--message=[annotated tag message]:message:' \
+                        '-m[annotated tag message]:message:' \
+                        '--lightweight[create a lightweight tag]' \
+                        '--force[overwrite existing local tag (and remote with --push)]' \
+                        '--push[push tag to origin, deduped]' \
+                        '--dry-run[show what would be done]' \
+                        '--no-progress[disable the progress bar]' \
+                        '--help[show help]'
+                    ;;
+                checkout)
+                    _arguments -s \
+                        '--no-fetch[skip git fetch --tags before checkout]' \
+                        '--force[discard local uncommitted changes (-f to git checkout)]' \
+                        '-f[discard local uncommitted changes (-f to git checkout)]' \
+                        '--no-progress[disable the progress bar]' \
                         '--help[show help]'
                     ;;
             esac
@@ -161,6 +196,7 @@ _airlab() {
         'docker-up:Start Docker containers using docker-compose'
         'docker-join:Attach to a running Docker container'
         'docker-list:List active Docker containers'
+        'docker-clean:Stop and remove all Docker containers'
         'vcs:Manage multiple repositories with common git functions'
         'cd:Change directory relative to \$AIRLAB_PATH'
     )
@@ -184,11 +220,15 @@ _airlab() {
             local cmd="${line[1]}"
             case "$cmd" in
                 setup)
-                    if (( CURRENT == 1 )); then
+                    if (( CURRENT == 2 )); then
                         _airlab_complete_targets
                         compadd -- --help
                         return
                     fi
+                    # For positions after the target, drop the subcommand
+                    # so _arguments parses flags from words[1] onwards.
+                    shift words
+                    (( CURRENT-- ))
                     _arguments -s \
                         '--path=[path]:path:_airlab_complete_airlab_path' \
                         '--force[force setup]' \
@@ -197,31 +237,37 @@ _airlab() {
                     ;;
 
                 ssh)
-                    if (( CURRENT == 1 )); then
+                    if (( CURRENT == 2 )); then
                         _airlab_complete_robots
                         compadd -- --help
                         return
                     fi
+                    shift words
+                    (( CURRENT-- ))
                     _arguments -s \
                         '--password[use password auth]' \
                         '--help[show help]'
                     ;;
 
                 auth|ping)
-                    if (( CURRENT == 1 )); then
+                    if (( CURRENT == 2 )); then
                         _airlab_complete_robots
                         compadd -- --help
                         return
                     fi
+                    shift words
+                    (( CURRENT-- ))
                     _arguments -s '--help[show help]'
                     ;;
 
                 sync)
-                    if (( CURRENT == 1 )); then
+                    if (( CURRENT == 2 )); then
                         _airlab_complete_robots
                         compadd -- --help
                         return
                     fi
+                    shift words
+                    (( CURRENT-- ))
                     _arguments -s \
                         '--dry-run[dry run]' \
                         '--delete[delete extraneous files]' \
@@ -234,11 +280,13 @@ _airlab() {
                     ;;
 
                 launch)
-                    if (( CURRENT == 1 )); then
+                    if (( CURRENT == 2 )); then
                         _airlab_complete_targets
                         compadd -- --help
                         return
                     fi
+                    shift words
+                    (( CURRENT-- ))
                     _arguments -s \
                         '--yaml_file=[YAML file]:yaml file:' \
                         '--stop[stop launch]' \
@@ -247,15 +295,30 @@ _airlab() {
                     ;;
 
                 set_env)
-                    if (( CURRENT == 1 )); then
+                    if (( CURRENT == 2 )); then
                         _airlab_complete_targets
                         compadd -- --help -h
                         return
                     fi
+                    shift words
+                    (( CURRENT-- ))
                     _arguments -s \
                         '--password[use password auth]' \
                         '--help[show help]' \
                         '-h[show help]'
+                    ;;
+
+                set_hosts)
+                    if (( CURRENT == 2 )); then
+                        _airlab_complete_targets
+                        compadd -- --help
+                        return
+                    fi
+                    shift words
+                    (( CURRENT-- ))
+                    _arguments -s \
+                        '--password[use password auth]' \
+                        '--help[show help]'
                     ;;
 
                 docker-build)
@@ -286,6 +349,15 @@ _airlab() {
                     _arguments -s \
                         '--system=[system name]:system:' \
                         '--images[list images]' \
+                        '--password[use password auth]' \
+                        '--help[show help]'
+                    ;;
+
+                docker-clean)
+                    _arguments -s \
+                        '--system=[system name]:system:' \
+                        '--yes[skip confirmation prompt]' \
+                        '-y[skip confirmation prompt]' \
                         '--password[use password auth]' \
                         '--help[show help]'
                     ;;

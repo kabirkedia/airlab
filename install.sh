@@ -4,6 +4,7 @@ set -e  # Exit immediately if a command exits with a non-zero status
 
 # Parse command line arguments.
 VENV_MODE=""  # "", "override", "no-override", or "skip"
+SKIP_APT=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --override-venv)
@@ -18,9 +19,13 @@ while [[ $# -gt 0 ]]; do
             VENV_MODE="skip"
             shift
             ;;
+        --skip-apt)
+            SKIP_APT=true
+            shift
+            ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--override-venv | --no-override-venv | --skip-venv]"
+            echo "Usage: $0 [--override-venv | --no-override-venv | --skip-venv] [--skip-apt]"
             exit 1
             ;;
     esac
@@ -29,13 +34,17 @@ done
 # Get the directory of the current script.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Update package lists
-sudo apt update
+if [ "$SKIP_APT" = true ]; then
+    echo "Skipping apt update and apt install (--skip-apt)."
+else
+    # Update package lists
+    sudo apt update
 
-# Install apt dependencies
-sudo apt install -y \
-    python3-pip \
-    python3-venv
+    # Install apt dependencies
+    sudo apt install -y \
+        python3-pip \
+        python3-venv
+fi
 
 # Handle venv setup.
 VENV_DIR="$HOME/VENVs"
@@ -104,7 +113,11 @@ fi
 
 # Go back to the script directory and run the Ubuntu 24 dependencies installation script.
 cd "$SCRIPT_DIR"
-bash install_dependencies_ubuntu24.sh
+DEP_ARGS=()
+if [ "$SKIP_APT" = true ]; then
+    DEP_ARGS+=(--skip-apt)
+fi
+bash install_dependencies_ubuntu24.sh "${DEP_ARGS[@]}"
 
 # Create the DEB package from a clean staging directory so that only
 # DEBIAN/, etc/, and usr/ end up in the package. Building directly from
@@ -120,6 +133,27 @@ if [ -z "$STAGING_DIR" ] || [ ! -d "$STAGING_DIR" ] || [ "$STAGING_DIR" = "/" ] 
 fi
 trap 'rm -rf "$STAGING_DIR"' EXIT
 cp -a "$SCRIPT_DIR/DEBIAN" "$SCRIPT_DIR/etc" "$SCRIPT_DIR/usr" "$STAGING_DIR/"
+
+# Auto-detect install source from this checkout's git origin and overwrite the
+# staged usr/share/airlab/install_source. This means a fork's local rebuild
+# always produces a .deb pointing at that fork, regardless of what the in-repo
+# file says — so a cross-fork merge that drags the wrong install_source value
+# in is self-correcting on next build. If origin can't be parsed (no .git, or
+# a non-GitHub remote), we leave the static file value in place as the fallback.
+if origin_url=$(git -C "$SCRIPT_DIR" remote get-url origin 2>/dev/null); then
+    detected="${origin_url#*github.com}"
+    detected="${detected#:}"
+    detected="${detected#/}"
+    [[ "$detected" =~ ^[0-9]+/ ]] && detected="${detected#*/}"
+    detected="${detected%.git}"
+    detected="${detected%/}"
+    if [[ "$detected" =~ ^[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+$ ]]; then
+        mkdir -p "$STAGING_DIR/usr/share/airlab"
+        echo "$detected" > "$STAGING_DIR/usr/share/airlab/install_source"
+        echo "Recorded install source from git origin: $detected"
+    fi
+fi
+
 dpkg-deb --build "$STAGING_DIR" "$SCRIPT_DIR/../airlab.deb"
 
 # Install the DEB package.

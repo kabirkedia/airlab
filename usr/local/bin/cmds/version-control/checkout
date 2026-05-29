@@ -1,0 +1,425 @@
+#!/bin/bash
+
+# Exit on error, undefined variables, and pipe failures
+set -uo pipefail
+
+# Color codes for output
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly NC='\033[0m' # No Color
+
+# Logging functions
+log_info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
+log_warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
+
+show_usage() {
+    cat << EOF
+Usage: airlab vcs checkout <ref> [OPTIONS]
+
+Recursively run \`git checkout <ref>\` in every repository under the
+current directory, skipping submodules. <ref> may be a branch or tag.
+
+After each checkout, the post-state is summarized in a colored table:
+the new branch (or tag), ahead/behind upstream where applicable, and
+whether submodule SHAs changed.
+
+Arguments:
+  <ref>                  Branch or tag name to check out.
+
+Options:
+  --no-fetch             Skip \`git fetch --tags origin\` before
+                         checkout. Faster, but tag availability and
+                         ahead/behind counts may be stale.
+  --force, -f            Pass -f to \`git checkout\`, discarding local
+                         uncommitted changes. Use with care.
+  --no-progress          Disable the progress bar (also auto-disabled
+                         when stderr is not a terminal).
+  --help                 Show this help message and exit.
+
+Behavior:
+  1. Walk PWD with the same logic as \`airlab vcs check\` (skip
+     submodules and linked worktrees, descend through repos).
+  2. For each repo: \`git fetch --quiet --tags origin\` unless
+     --no-fetch is set.
+  3. For each repo: \`git checkout <ref>\` (or \`-f\` with --force).
+     - If <ref> is a branch on origin but not yet local, git's DWIM
+       creates a tracking branch automatically.
+     - If <ref> is a tag, the result is a detached HEAD.
+     - If <ref> does not exist on the repo (not a local branch, not
+       a tag, not origin/<ref>), report 'ref MISSING' and skip.
+     - If the working tree is dirty and checkout would overwrite,
+       report 'FAILED (dirty)' and skip (--force overrides).
+  4. After a successful checkout, classify the repo:
+     - On a branch with upstream: compute ahead/behind (\`+N\`/\`-N\`).
+     - On a tag (detached): no remote comparison.
+     - Submodule SHAs are snapshotted before and after; any change
+       in the recorded SHA of any submodule is reported.
+
+Output:
+  Per-repo row colored by status:
+    green   ok            — checked out, on ref, up to date.
+    yellow  warn          — checked out but ahead/behind upstream,
+                            or submodule SHAs changed.
+    red     err           — ref MISSING, FAILED, FAILED (dirty), or
+                            fetch failure.
+
+Exit codes:
+  0  All repos checked out cleanly and are up to date.
+  1  Any repo has a warn or err status.
+
+Examples:
+  airlab vcs checkout main
+  airlab vcs checkout v1.0.0
+  airlab vcs checkout strapsai/main --no-fetch
+  airlab vcs checkout main --force
+EOF
+}
+
+check_dependencies() {
+    local deps=("git")
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" >/dev/null 2>&1; then
+            log_error "Required dependency '$dep' is not installed."
+            exit 1
+        fi
+    done
+}
+
+do_checkout() {
+    local base_dir=$1
+    local ref=$2
+    local fetch=$3
+    local force=$4
+    local progress=$5
+
+    python3 - "$base_dir" "$ref" "$fetch" "$force" "$progress" <<'PYEOF'
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+GREEN  = "\033[0;32m"
+YELLOW = "\033[1;33m"
+RED    = "\033[0;31m"
+NC     = "\033[0m"
+
+base_dir       = os.path.abspath(sys.argv[1])
+ref            = sys.argv[2]
+do_fetch       = sys.argv[3] == "1"
+force          = sys.argv[4] == "1"
+progress_flag  = sys.argv[5]
+show_progress  = (progress_flag != "off") and sys.stderr.isatty()
+
+# --- Progress bar plumbing (same shape as vcs check / vcs tag) -------------
+_last_render = [0.0]
+
+def _term_width():
+    try:
+        return shutil.get_terminal_size((80, 20)).columns
+    except Exception:
+        return 80
+
+def progress_line(label, i, total, item, force_render=False):
+    if not show_progress:
+        return
+    now = time.monotonic()
+    if not force_render and (now - _last_render[0]) < 0.04:
+        return
+    _last_render[0] = now
+    width = _term_width()
+    bar_w = 20
+    pct   = (i / total) if total else 1.0
+    fill  = int(bar_w * pct)
+    bar   = "█" * fill + "░" * (bar_w - fill)
+    head  = f"[{bar}] {i}/{total}  {label}: "
+    space = max(0, width - len(head) - 1)
+    if len(item) > space:
+        item = "…" + item[-(space - 1):] if space > 1 else ""
+    line = head + item
+    pad = max(0, width - len(line) - 1)
+    sys.stderr.write("\r" + line + (" " * pad))
+    sys.stderr.flush()
+
+def progress_clear():
+    if not show_progress:
+        return
+    width = _term_width()
+    sys.stderr.write("\r" + (" " * (width - 1)) + "\r")
+    sys.stderr.flush()
+
+def git(repo_dir, *args, timeout=60):
+    result = subprocess.run(
+        ["git", "-C", repo_dir] + list(args),
+        capture_output=True, text=True, timeout=timeout
+    )
+    return result.returncode, result.stdout.strip(), result.stderr.strip()
+
+# --- Walk PWD, same rules as vcs check -------------------------------------
+repos = []
+def walk(path):
+    git_path = os.path.join(path, '.git')
+    if os.path.isdir(git_path):
+        rc, out, _ = git(path, 'rev-parse', '--show-superproject-working-tree')
+        if rc == 0 and out:
+            return  # submodule subtree — managed by parent
+        repos.append(path)
+        progress_line("scanning", len(repos), max(len(repos), 1),
+                      os.path.relpath(path, base_dir))
+    elif os.path.isfile(git_path):
+        return  # submodule or linked worktree
+    try:
+        entries = sorted(os.listdir(path))
+    except (PermissionError, OSError):
+        return
+    for entry in entries:
+        if entry == '.git' or entry.startswith('.'):
+            continue
+        full = os.path.join(path, entry)
+        if os.path.isdir(full) and not os.path.islink(full):
+            walk(full)
+
+walk(base_dir)
+progress_clear()
+
+if not repos:
+    print(f"{YELLOW}[INFO]{NC} No git repositories found under {base_dir}")
+    sys.exit(0)
+
+print(f"Scanned {len(repos)} git repositor{'y' if len(repos) == 1 else 'ies'} under {base_dir}")
+print(f"  - target ref:    {ref}")
+print(f"  - fetch first:   {'yes' if do_fetch else 'no'}")
+print(f"  - force checkout:{' yes' if force else ' no'}")
+print()
+
+def submodule_sha_map(repo):
+    """Map of submodule_path -> recorded SHA (prefix stripped)."""
+    rc, out, _ = git(repo, 'submodule', 'status', '--recursive')
+    if rc != 0:
+        return {}
+    out_map = {}
+    for line in out.splitlines():
+        if not line:
+            continue
+        # git submodule status lines: "[+-U ]<sha> <path> [(describe)]"
+        s = line[1:] if line[0] in '+-U ' else line
+        s = s.lstrip()
+        parts = s.split(None, 2)
+        if len(parts) >= 2:
+            out_map[parts[1]] = parts[0]
+    return out_map
+
+def classify_ref(repo):
+    """Return (local_branch, is_tag, remote_branch) bools for `ref`."""
+    rc1, _, _ = git(repo, 'rev-parse', '--verify', '--quiet', f'refs/heads/{ref}')
+    rc2, _, _ = git(repo, 'rev-parse', '--verify', '--quiet', f'refs/tags/{ref}')
+    rc3, _, _ = git(repo, 'rev-parse', '--verify', '--quiet', f'refs/remotes/origin/{ref}')
+    return (rc1 == 0, rc2 == 0, rc3 == 0)
+
+results = []
+total = len(repos)
+
+for idx, repo in enumerate(repos, start=1):
+    rel = os.path.relpath(repo, base_dir)
+    progress_line("checking out", idx, total, rel, force_render=True)
+
+    r = {
+        'rel': rel,
+        'action': '',
+        'branch': '',
+        'remote': '',
+        'submod': '',
+        'status': 'ok',  # ok | warn | err
+    }
+
+    if do_fetch:
+        fc, _, _ = git(repo, 'fetch', '--quiet', '--tags', 'origin')
+        if fc != 0:
+            r['action'] = 'fetch FAILED'
+            r['status'] = 'err'
+            r['branch'] = r['remote'] = r['submod'] = '—'
+            results.append(r)
+            continue
+
+    local_branch, is_tag, remote_branch = classify_ref(repo)
+    if not (local_branch or is_tag or remote_branch):
+        r['action'] = 'ref MISSING'
+        r['status'] = 'err'
+        r['branch'] = r['remote'] = r['submod'] = '—'
+        results.append(r)
+        continue
+
+    sm_before = submodule_sha_map(repo)
+    rc, cur_branch, _ = git(repo, 'rev-parse', '--abbrev-ref', 'HEAD')
+    cur_branch = cur_branch if rc == 0 else '?'
+
+    co_args = ['checkout']
+    if force:
+        co_args.append('-f')
+    co_args.append(ref)
+    cc, _, co_err = git(repo, *co_args)
+    if cc != 0:
+        msg = co_err.lower()
+        if 'would be overwritten' in msg or 'local changes' in msg or 'untracked working tree' in msg:
+            r['action'] = 'FAILED (dirty)'
+        else:
+            r['action'] = 'FAILED'
+        r['status'] = 'err'
+        r['branch'] = r['remote'] = r['submod'] = '—'
+        results.append(r)
+        continue
+
+    rc, new_branch, _ = git(repo, 'rev-parse', '--abbrev-ref', 'HEAD')
+    new_branch = new_branch if rc == 0 else '?'
+
+    if new_branch == 'HEAD' and is_tag:
+        r['action'] = 'on tag'
+        r['branch'] = f'({ref})'
+    elif new_branch == cur_branch:
+        r['action'] = 'no-change'
+        r['branch'] = new_branch
+    else:
+        r['action'] = 'switched'
+        r['branch'] = new_branch
+
+    if new_branch != 'HEAD':
+        rcu, _, _ = git(repo, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', 'HEAD@{u}')
+        if rcu == 0:
+            rcab, ab, _ = git(repo, 'rev-list', '--left-right', '--count', 'HEAD...@{u}')
+            if rcab == 0 and ab:
+                try:
+                    ahead_n, behind_n = (int(x) for x in ab.split())
+                except ValueError:
+                    ahead_n = behind_n = 0
+                if ahead_n == 0 and behind_n == 0:
+                    r['remote'] = '='
+                else:
+                    parts = []
+                    if ahead_n:  parts.append(f'+{ahead_n}')
+                    if behind_n: parts.append(f'-{behind_n}')
+                    r['remote'] = ' '.join(parts)
+                    if r['status'] == 'ok':
+                        r['status'] = 'warn'
+            else:
+                r['remote'] = '?'
+        else:
+            r['remote'] = 'no-upstream'
+    else:
+        r['remote'] = '—'
+
+    sm_after = submodule_sha_map(repo)
+    all_keys = set(sm_before) | set(sm_after)
+    changed = sum(1 for k in all_keys if sm_before.get(k) != sm_after.get(k))
+    if changed:
+        r['submod'] = f'changed {changed}'
+        if r['status'] == 'ok':
+            r['status'] = 'warn'
+    elif sm_after:
+        r['submod'] = f'ok ({len(sm_after)})'
+    else:
+        r['submod'] = '—'
+
+    results.append(r)
+
+progress_clear()
+
+# --- Render the table ------------------------------------------------------
+col_repo   = max(len('Repository'), max((len(r['rel'])    for r in results), default=10))
+col_action = max(len('Action'),     max((len(r['action']) for r in results), default=6))
+col_branch = max(len('Branch'),     max((len(r['branch']) for r in results), default=6))
+col_remote = max(len('Remote'),     max((len(r['remote']) for r in results), default=6))
+col_submod = max(len('Submodules'), max((len(r['submod']) for r in results), default=10))
+
+hdr = (
+    f"{'Repository':<{col_repo}}  "
+    f"{'Action':<{col_action}}  "
+    f"{'Branch':<{col_branch}}  "
+    f"{'Remote':<{col_remote}}  "
+    f"{'Submodules':<{col_submod}}"
+)
+print(hdr)
+print('-' * len(hdr))
+
+color_of = {'ok': GREEN, 'warn': YELLOW, 'err': RED}
+status_order = {'err': 0, 'warn': 1, 'ok': 2}
+
+for r in sorted(results, key=lambda x: (status_order[x['status']], x['rel'])):
+    line = (
+        f"{r['rel']:<{col_repo}}  "
+        f"{r['action']:<{col_action}}  "
+        f"{r['branch']:<{col_branch}}  "
+        f"{r['remote']:<{col_remote}}  "
+        f"{r['submod']:<{col_submod}}"
+    )
+    print(f"{color_of[r['status']]}{line}{NC}")
+
+# --- Summary line ----------------------------------------------------------
+ok_n   = sum(1 for r in results if r['status'] == 'ok')
+warn_n = sum(1 for r in results if r['status'] == 'warn')
+err_n  = sum(1 for r in results if r['status'] == 'err')
+print()
+print(
+    f"Summary: {GREEN}{ok_n} ok{NC}, "
+    f"{YELLOW}{warn_n} warn{NC}, "
+    f"{RED}{err_n} err{NC}"
+)
+
+if err_n or warn_n:
+    sys.exit(1)
+sys.exit(0)
+PYEOF
+}
+
+main() {
+    check_dependencies
+
+    local ref=""
+    local fetch="1"
+    local force="0"
+    local progress="on"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --no-fetch)
+                fetch="0"
+                ;;
+            --force|-f)
+                force="1"
+                ;;
+            --no-progress)
+                progress="off"
+                ;;
+            --help)
+                show_usage
+                exit 0
+                ;;
+            --*)
+                log_error "Invalid option: $1"
+                show_usage
+                exit 1
+                ;;
+            *)
+                if [[ -z "$ref" ]]; then
+                    ref="$1"
+                else
+                    log_error "Unexpected argument: $1"
+                    show_usage
+                    exit 1
+                fi
+                ;;
+        esac
+        shift
+    done
+
+    if [[ -z "$ref" ]]; then
+        log_error "Missing required argument: <ref>"
+        show_usage
+        exit 1
+    fi
+
+    do_checkout "$PWD" "$ref" "$fetch" "$force" "$progress"
+}
+
+main "$@"
