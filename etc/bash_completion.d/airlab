@@ -127,6 +127,39 @@ _airlab_complete_repo_file_value() {
     compopt -o nospace
 }
 
+# Helper: complete alias names under $AIRLAB_ALIAS_PATH for "airlab a".
+# Walks every colon-separated entry; offers sub-dirs (trailing /) and .sh/.py
+# leaves with the extension stripped. cur is the partial alias path typed.
+_airlab_complete_alias() {
+    local raw="${AIRLAB_ALIAS_PATH:-${AIRLAB_PATH:-}/alias}"
+    local -a bases
+    IFS=':' read -r -a bases <<< "$raw"
+
+    local typed="$cur"
+    local base search_dir entry rel
+    for base in "${bases[@]}"; do
+        [[ -d "$base" ]] || continue
+        search_dir="$base"
+        if [[ "$typed" == */* ]]; then
+            search_dir="$base/${typed%/*}"
+        fi
+        [[ -d "$search_dir" ]] || continue
+        while IFS= read -r -d '' entry; do
+            rel="${entry#"$base"/}"
+            if [[ -d "$entry" ]]; then
+                [[ "$rel" == "$typed"* ]] || continue
+                COMPREPLY+=( "${rel}/" )
+            elif [[ "$entry" == *.sh || "$entry" == *.py ]]; then
+                rel="${rel%.*}"
+                [[ "$rel" == "$typed"* ]] || continue
+                COMPREPLY+=( "$rel" )
+            fi
+        done < <(find "$search_dir" -mindepth 1 -maxdepth 1 -print0 2>/dev/null | sort -z)
+    done
+
+    compopt -o nospace
+}
+
 # Helper: complete directories under $AIRLAB_PATH for "airlab cd".
 # Works like system cd — only shows directories, supports nested paths.
 _airlab_complete_cd() {
@@ -171,7 +204,7 @@ _airlab_completions() {
 
     # Top-level commands
     local commands="greet setup ssh auth ping sync launch set_env set_hosts \
-docker-build docker-up docker-join docker-list docker-clean vcs cd --help --version"
+docker-build docker-up docker-join docker-list docker-clean vcs a cd --help --version"
 
     # Position 1: complete the sub-command
     if [[ $cword -eq 1 ]]; then
@@ -285,6 +318,20 @@ docker-build docker-up docker-join docker-list docker-clean vcs cd --help --vers
         cd)
             _airlab_complete_cd
             return
+            ;;
+
+        a)
+            # Typing a flag → complete alias-level flags.
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=( $(compgen -W "--help --lint --new" -- "$cur") )
+                return
+            fi
+            # Position 2 → complete alias names; deeper → just --help.
+            if [[ $cword -eq 2 ]]; then
+                _airlab_complete_alias
+                return
+            fi
+            COMPREPLY=( $(compgen -W "--help" -- "$cur") )
             ;;
 
         vcs)

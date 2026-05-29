@@ -93,6 +93,35 @@ _airlab_complete_cd() {
     compadd -S '/' -q -- "${dirs[@]}"
 }
 
+# Completion action: alias names under $AIRLAB_ALIAS_PATH (for "airlab a").
+# Walks every colon-separated entry; offers sub-dirs (trailing /) and .sh/.py
+# leaves with the extension stripped.
+_airlab_complete_alias() {
+    local raw="${AIRLAB_ALIAS_PATH:-${AIRLAB_PATH:-}/alias}"
+    local -a bases; bases=( ${(s.:.)raw} )
+    local typed="$PREFIX"
+    local base search_dir entry rel
+    for base in $bases; do
+        [[ -d "$base" ]] || continue
+        search_dir="$base"
+        if [[ "$typed" == */* ]]; then
+            search_dir="$base/${typed%/*}"
+        fi
+        [[ -d "$search_dir" ]] || continue
+        for entry in "$search_dir"/*(N); do
+            rel="${entry#$base/}"
+            if [[ -d "$entry" ]]; then
+                [[ "$rel" == "$typed"* ]] || continue
+                compadd -S '/' -q -- "$rel"
+            elif [[ "$entry" == *.sh || "$entry" == *.py ]]; then
+                rel="${rel%.*}"
+                [[ "$rel" == "$typed"* ]] || continue
+                compadd -- "$rel"
+            fi
+        done
+    done
+}
+
 _airlab_vcs() {
     local -a vcs_commands
     vcs_commands=(
@@ -198,6 +227,7 @@ _airlab() {
         'docker-list:List active Docker containers'
         'docker-clean:Stop and remove all Docker containers'
         'vcs:Manage multiple repositories with common git functions'
+        'a:Run a user-defined alias command'
         'cd:Change directory relative to \$AIRLAB_PATH'
     )
 
@@ -364,6 +394,16 @@ _airlab() {
 
                 cd)
                     _airlab_complete_cd
+                    ;;
+
+                a)
+                    if [[ "$PREFIX" == -* ]]; then
+                        compadd -- --help --lint --new
+                    elif (( CURRENT == 2 )); then
+                        _airlab_complete_alias
+                    else
+                        compadd -- --help
+                    fi
                     ;;
 
                 vcs)
