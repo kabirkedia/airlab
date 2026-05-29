@@ -65,8 +65,8 @@ When running airlab setup <system_name>, the command:
 - Installs or updates the Airlab package
 - Configures the remote environment(airlab.env file)
 - Updates the remote .bashrc file
-- Updates the /etc/hosts file on host system. It creates an alias so that you directly ssh using hostname like `ping robot1`
-- Syncs the /etc/hosts file to the remote system so that it remains consistent across systems. It does not change system generated information
+
+> **Note:** To update `/etc/hosts` with robot hostname mappings, use `airlab set_hosts local` (for the local machine) or `airlab set_hosts <robot_name>` (for a remote robot). See the [set_hosts documentation](/usr/local/bin/docs/set_hosts.md) for details.
 
 ## Error Handling
 

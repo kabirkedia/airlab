@@ -14,6 +14,7 @@
     *   [SSH](#ssh)
     *   [Auth](#auth)
     *   [set_env](#set_env)
+    *   [set_hosts](#set_hosts)
     *   [Sync](#sync)
     *   [Launch](#launch)
     *   [Docker Commands](#docker-commands)
@@ -34,6 +35,7 @@
 *   **File Synchronization:**  Provides an easy and efficient method for transferring files between local and remote systems.
 *   **Launch Management:** Simplifies the process of launching and managing robotic system launch files, especially using `tmux` sessions.
 *   **Environment Setup:** Automates the configuration of necessary environments on remote systems.
+*   **Multi-Repository Workflows:** Beyond `vcstool`'s init/pull/push/status, the `vcs` family also supports cross-workspace **drift detection** (`airlab vcs check`), **recursive tagging with deduplicated push** (`airlab vcs tag`), and **recursive branch / tag checkout with a colored post-state summary** (`airlab vcs checkout`), which are essential when the same source repository is cloned across many sub-workspaces.
 *   **Unified Interface:** Consolidates various tools and processes into a single command-line utility.
 *   **Debian Package:**  Offers a simple and reliable installation and update mechanism via a Debian package.
 
@@ -85,6 +87,16 @@
 
     The `--skip-venv` option is useful when you manage your own virtual environment (e.g., conda, poetry, or a shared team venv). It requires that a virtual environment is already active in the current terminal session. Python dependencies will be installed into that active venv instead of creating `~/VENVs/airlab`.
 
+    **Skip apt installs:**
+
+    If you've already installed the apt dependencies (or want to manage them yourself), use `--skip-apt` to skip both `sudo apt update` and `sudo apt install` in `install.sh` and `install_dependencies_ubuntu24.sh`:
+
+    ```bash
+    ./install.sh --skip-apt
+    ```
+
+    This flag can be combined with the venv flags, e.g., `./install.sh --skip-venv --skip-apt`.
+
 3.  **(Optional) Install Missing Dependencies:** This command can attempt to fix broken installations by installing missing dependencies. While it can be helpful, it's generally more reliable to ensure all prerequisites are installed beforehand.
 
     ```bash
@@ -110,18 +122,20 @@ After installing airlab you can run the command to setup the environment `airlab
 *   **Paths:** `airlab sync <robot> --path=<TAB>` and `--exclude=<TAB>` complete with files and directories under `$AIRLAB_PATH`.
 *   **Docker containers:** `airlab docker-join --name=<TAB>` completes with currently running Docker container names.
 *   **VCS repo files:** `airlab vcs init --repo_file=<TAB>` completes with `.yaml`/`.yml` files (and subdirectories) under `$AIRLAB_PATH/version_control/`.
-*   **VCS sub-commands:** `airlab vcs <TAB>` lists `init`, `pull`, `push`, `status`, and `update`, each with their own option completions.
+*   **VCS sub-commands:** `airlab vcs <TAB>` lists `init`, `pull`, `push`, `status`, `update`, `check`, `tag`, and `checkout`, each with their own option completions.
 
-To manually reload the completion script (e.g., during development):
+**After installing or upgrading `airlab`**, run the appropriate snippet below so your shell picks up the new completion file. This is also the fix if you ever see stale or missing completions (e.g. `airlab ssh <TAB>` not listing robots after an upgrade):
 
 ```bash
 # Bash
 source /etc/bash_completion.d/airlab
 
-# Zsh (clear cache and restart)
+# Zsh — clear the compiled compdump cache and restart the shell
 rm -f ~/.zcompdump*
 exec zsh
 ```
+
+The zsh snippet is needed because zsh caches a compiled completion-function table in `~/.zcompdump*`; an upgraded `_airlab` on disk is only picked up after the cache is invalidated (some zsh frameworks like oh-my-zsh / prezto skip the freshness check by default).
 
 ## Commands
 
@@ -320,6 +334,54 @@ airlab set_env robot1 MY_VAR="hello"
 
 ---
 
+### set_hosts
+
+Updates `/etc/hosts` with hostname-to-IP mappings from `robot.conf`, so you can reach robots by name (e.g., `ping mt001`).
+
+#### Usage
+
+```bash
+airlab set_hosts local [--help]
+
+airlab set_hosts <robot_name> [--password] [--help]
+```
+
+#### Arguments
+
+*   `local`: Update the local machine's `/etc/hosts`.
+*   `<robot_name>`: Update `/etc/hosts` on a remote robot via SSH.
+
+#### Options
+
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly (remote targets only).
+*   `--help`: Show help message.
+
+#### Quick Examples
+
+```bash
+airlab set_hosts local              # Update local /etc/hosts
+airlab set_hosts mt001              # Update /etc/hosts on mt001
+airlab set_hosts mt001 --password   # Use password authentication
+```
+
+#### Features
+
+*   Reads `robot.conf` entries and generates `/etc/hosts` lines mapping robot names to their IPs.
+*   Skips `ssh://` URI entries (e.g., `ssh://user@host:port` for port-forwarded connections), since they share a single hostname with different ports and don't map to unique IPs.
+*   Creates a timestamped backup before modifying `/etc/hosts` (e.g., `/etc/hosts_20260429_160345`).
+*   Uses fenced markers (`# Airlab Hosts Start` / `# Airlab Hosts End`) — if markers exist, only the content between them is replaced.
+*   Checks for hostname and IP conflicts with existing entries outside the markers. If conflicts are found, warns and aborts.
+*   Supports both local and remote targets with full SSH key/password authentication.
+
+#### Dependencies
+
+*   `ssh`, `sshpass` (for remote targets)
+*   `sudo` (required to modify `/etc/hosts`)
+
+Detailed documentation is available [here](/usr/local/bin/docs/set_hosts.md).
+
+---
+
 ### Sync
 
 This command synchronizes files between the local machine and a remote robot.
@@ -513,6 +575,31 @@ airlab docker-up [OPTIONS]
 *   `--password`: Skip key-based SSH authentication and prompt for a password directly.
 *   `--help`: Display help message.
 
+#### docker-clean
+
+Stops and removes **all** Docker containers (running or stopped) on the local machine or a remote robot. Equivalent to `docker stop $(docker ps -a -q) && docker rm $(docker ps -a -q)`, but no-ops cleanly when there are no containers. Prompts for confirmation by default since this is destructive.
+
+##### Usage
+
+```bash
+airlab docker-clean [OPTIONS]
+```
+
+##### Options
+
+*   `--system=<system_name>`: Target system for remote operations.
+*   `--yes`, `-y`: Skip the confirmation prompt.
+*   `--password`: Skip key-based SSH authentication and prompt for a password directly.
+*   `--help`: Display help message.
+
+##### Quick Examples
+
+```bash
+airlab docker-clean                  # local, with confirmation
+airlab docker-clean --yes            # local, no prompt
+airlab docker-clean --system=mt001   # clean every container on mt001
+```
+
 #### Common Features
 
 *   **Remote Operations**: Requires a valid system definition in `robot.conf`, SSH credentials, and correct configuration in `robot_info.yaml`.
@@ -566,7 +653,7 @@ airlab vcs pull [OPTIONS]
 
 #### push
 
-Pushes local changes to remote repositories.
+Pushes local changes to remote repositories. With `--tags=<name>`, pushes a single named tag instead of branch refs, deduplicated by remote URL with the same drift gate as [`tag --push`](#tag).
 
 ##### Usage
 
@@ -576,7 +663,19 @@ airlab vcs push [OPTIONS]
 
 ##### Options
 
+*   `--tags=<name>`: Push the named tag (instead of branch refs). Walks the current directory, finds git repositories (skipping submodules), groups them by normalized remote URL, and runs `git push origin refs/tags/<name>` once per unique URL. Refuses if any group's clones have the tag pointing at different commits, unless `--force` is also given.
+*   `--force`: With `--tags=`, overwrite the remote tag and skip the drift gate.
+*   `--dry-run`: With `--tags=`, show what would be pushed without actually pushing.
 *   `--help`: Display help message.
+
+##### Quick Examples
+
+```bash
+airlab vcs push                       # push branch refs (vcstool default)
+airlab vcs push --tags=v1.0.0         # push tag v1.0.0, deduped by URL
+airlab vcs push --tags=v1.0.0 --dry-run
+airlab vcs push --tags=v1.0.0 --force # overwrite remote, skip drift gate
+```
 
 #### status
 
@@ -612,6 +711,160 @@ airlab vcs update [OPTIONS]
 1.  Pull all existing repos (stops on first failure).
 2.  Run `airlab vcs init --here` to clone any missing repos.
 3.  Pull all repos again (collects failures and shows a summary).
+
+#### check
+
+Find repository drift in two complementary modes. Run before `airlab vcs tag` to make sure shared clones agree.
+
+##### Usage
+
+```bash
+airlab vcs check [OPTIONS]
+```
+
+##### Modes
+
+*   **Default (filesystem mode):** Walks the current directory recursively, finds every git repository (skipping submodules and linked worktrees), groups them by normalized remote URL, and flags any group whose clones are not all on the same commit. Equivalent ssh and https URLs collapse to the same group. Output is split into `[DRIFT]` (red), `[BRANCH SKEW]` (yellow), `[OK]` (green), `[NO ORIGIN]`, and `[DIRTY]` sections.
+*   **`--version-control` mode:** Reads every YAML file under `$AIRLAB_PATH/version_control/`. Flags any URL pinned to multiple `version:` values across YAMLs (`[VERSION DRIFT]`) and any duplicate URLs within a single YAML (`[DUPLICATE URL]`).
+
+##### Options
+
+*   `--version-control`: Scan YAMLs in `$AIRLAB_PATH/version_control/` instead of walking PWD.
+*   `--no-progress`: Disable the progress bar (also auto-disabled when stderr is not a terminal).
+*   `--help`: Display help message.
+
+##### Exit Codes
+
+*   `0`: No drift / no duplicates found.
+*   `1`: Drift, duplicate URLs, or YAML parse errors detected — usable in scripts and CI.
+
+##### Quick Examples
+
+```bash
+airlab cd && airlab vcs check         # walk the workspace, flag commit drift
+airlab vcs check --version-control    # cross-YAML version drift + intra-YAML dupes
+airlab vcs check --no-progress        # piped/CI-friendly run
+```
+
+#### tag
+
+Recursively create a git tag at HEAD of every repository under the current directory, skipping submodules. Optionally push the tag to origin once per unique remote URL (deduplicated, with a drift gate).
+
+##### Usage
+
+```bash
+airlab vcs tag <tag_name> [OPTIONS]
+```
+
+##### Arguments
+
+*   `<tag_name>`: Name of the tag to create (e.g. `v1.0.0`).
+
+##### Options
+
+*   `-m, --message=<msg>`: Annotated tag message. Default: `airlab vcs tag <name> on <ISO date>`.
+*   `--lightweight`: Create a lightweight tag (no message). Mutually exclusive with `-m` / `--message`.
+*   `--force`: Overwrite an existing local tag. With `--push`, also overwrites the remote tag and skips the drift gate.
+*   `--push`: After tagging, push the tag to origin once per unique remote URL. Refuses to push if shared clones are not on the same commit, unless `--force` is also set. The repository with the lexicographically smallest path is chosen as the source for each push.
+*   `--dry-run`: Print what would be done without making any changes.
+*   `--no-progress`: Disable the progress bar (also auto-disabled when stderr is not a terminal).
+*   `--help`: Display help message.
+
+##### Behavior
+
+*   Annotated tags by default; the auto-generated message records the tag name and an ISO-8601 UTC timestamp.
+*   A dirty working tree triggers a `[WARN]` line but does not block tagging — the tag attaches to whatever HEAD currently points at.
+*   With `--push`, a repo cloned in N workspaces is pushed exactly once. The drift gate refuses publication if the same logical repo has different SHAs across workspaces.
+
+##### Recommended Workflow
+
+```bash
+airlab cd
+airlab vcs check                      # confirm no [DRIFT]
+airlab vcs tag v1.0.0 --push          # tag everything and publish, deduped
+```
+
+If you want to tag now and push later:
+
+```bash
+airlab vcs tag v1.0.0
+airlab vcs push --tags=v1.0.0
+```
+
+##### Quick Examples
+
+```bash
+airlab vcs tag v1.0.0                                # annotated tag, no push
+airlab vcs tag v1.0.0 --message="release 1.0"        # custom message
+airlab vcs tag v1.0.0 --lightweight                  # lightweight tag
+airlab vcs tag v1.0.0 --push                         # tag + dedup-push
+airlab vcs tag v1.0.0 --push --force                 # overwrite remote tag
+airlab vcs tag v1.0.0 --dry-run                      # preview only
+```
+
+#### `airlab vcs checkout <ref>` — Recursive Branch / Tag Checkout
+
+Recursively run `git checkout <ref>` in every repository under the current directory, skipping submodules. `<ref>` may be a branch or tag. After each checkout, the new state is summarized in a colored table.
+
+##### Usage
+
+```bash
+airlab vcs checkout <ref> [OPTIONS]
+```
+
+##### Arguments
+
+*   `<ref>`: Branch or tag name to check out.
+
+##### Options
+
+*   `--no-fetch`: Skip `git fetch --tags origin` before checkout. Faster, but tag availability and ahead/behind counts may be stale.
+*   `--force`, `-f`: Pass `-f` to `git checkout`, discarding local uncommitted changes. Use with care.
+*   `--no-progress`: Disable the progress bar (also auto-disabled when stderr is not a terminal).
+*   `--help`: Display help message.
+
+##### Behavior
+
+*   Walks PWD with the same logic as `airlab vcs check` (skips submodules and linked worktrees).
+*   Fetches `--tags` from `origin` per repo unless `--no-fetch` (so tag availability and ahead/behind are accurate).
+*   If `<ref>` exists on `origin` but not yet locally, git's DWIM creates a tracking branch.
+*   If `<ref>` is a tag, the result is a detached HEAD (reported as `on tag`).
+*   If `<ref>` does not exist on the repo (no local branch, no tag, no `origin/<ref>`), the row reports `ref MISSING`.
+*   Dirty trees that would be clobbered are reported as `FAILED (dirty)` and skipped; `--force` overrides.
+*   After each successful checkout, ahead/behind upstream is computed (when on a branch with tracking), and submodule SHA changes are counted.
+
+##### Output
+
+Per-repo row colored by status:
+
+*   **green** `ok` — checked out, on ref, up to date (or no remote to compare).
+*   **yellow** `warn` — checked out but ahead/behind upstream, or submodule SHAs changed.
+*   **red** `err` — `ref MISSING`, `FAILED`, `FAILED (dirty)`, or `fetch FAILED`.
+
+Rows are sorted err → warn → ok. A summary line counts each status bucket. Exit code is 0 only when every row is `ok`.
+
+##### Quick Examples
+
+```bash
+airlab vcs checkout main                  # branch checkout in every repo (fetches first)
+airlab vcs checkout v1.0.0                # tag checkout; missing-tag repos are flagged
+airlab vcs checkout strapsai/main         # also a branch — pulled from origin if needed
+airlab vcs checkout main --no-fetch       # already fetched recently, skip
+airlab vcs checkout main --force          # discard local uncommitted changes
+```
+
+#### Progress Bar
+
+`vcs check` (filesystem mode), `vcs tag`, and `vcs checkout` show a progress bar on stderr during their silent phases — the directory walk and the per-repo `git` invocations. Across hundreds of repositories these phases would otherwise look hung.
+
+```
+[████████░░░░░░░░░░░░] 145/347  inspecting: ws/src/path/to/repo
+```
+
+*   Stderr only, so piped/redirected stdout stays clean.
+*   Auto-disabled when stderr is not a TTY.
+*   `--no-progress` flag forces it off even on a TTY (useful in CI / scripts).
+*   The tag and push **execution** loops are not wrapped — they already emit one `✓` / `✗` line per repository.
 
 #### Common Features
 

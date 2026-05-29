@@ -17,6 +17,7 @@ function show_usage() {
     echo "  docker-up                     Start Docker containers using docker-compose."
     echo "  docker-join                   Attach to a running Docker container."
     echo "  docker-list                   List active Docker containers."
+    echo "  docker-clean                  Stop and remove all Docker containers."
     echo "  vcs                           Manage multiple repositories with common git functions."
     echo "  ping                          Ping a remote robot."
     echo "  ssh                           Connect to a remote machine using SSH."
@@ -74,7 +75,11 @@ case "$COMMAND" in
     docker-list)
         # List Docker containers in the right place
         /usr/local/bin/cmds/docker-list "$@"
-        ;; 
+        ;;
+    docker-clean)
+        # Stop and remove all Docker containers
+        /usr/local/bin/cmds/docker-clean "$@"
+        ;;
     vcs)
         # Do git operations on multiple repositories
         /usr/local/bin/cmds/version-control/vcs "$@"
