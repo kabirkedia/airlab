@@ -124,16 +124,18 @@ After installing airlab you can run the command to setup the environment `airlab
 *   **VCS repo files:** `airlab vcs init --repo_file=<TAB>` completes with `.yaml`/`.yml` files (and subdirectories) under `$AIRLAB_PATH/version_control/`.
 *   **VCS sub-commands:** `airlab vcs <TAB>` lists `init`, `pull`, `push`, `status`, `update`, `check`, and `tag`, each with their own option completions.
 
-To manually reload the completion script (e.g., during development):
+**After installing or upgrading `airlab`**, run the appropriate snippet below so your shell picks up the new completion file. This is also the fix if you ever see stale or missing completions (e.g. `airlab ssh <TAB>` not listing robots after an upgrade):
 
 ```bash
 # Bash
 source /etc/bash_completion.d/airlab
 
-# Zsh (clear cache and restart)
+# Zsh — clear the compiled compdump cache and restart the shell
 rm -f ~/.zcompdump*
 exec zsh
 ```
+
+The zsh snippet is needed because zsh caches a compiled completion-function table in `~/.zcompdump*`; an upgraded `_airlab` on disk is only picked up after the cache is invalidated (some zsh frameworks like oh-my-zsh / prezto skip the freshness check by default).
 
 ## Commands
 
