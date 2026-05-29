@@ -103,7 +103,7 @@ _airlab_vcs() {
         'update:Pull + init missing + pull again'
         'check:Find drift across cloned repos or version_control YAMLs'
         'tag:Recursively tag git repos under PWD'
-        'checkout:Recursively git checkout <ref> in every repo under PWD'
+        'checkout:Recursively git checkout a branch or tag in every repo under PWD'
     )
 
     local state line context
