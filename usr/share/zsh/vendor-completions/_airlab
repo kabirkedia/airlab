@@ -211,11 +211,15 @@ _airlab() {
             local cmd="${line[1]}"
             case "$cmd" in
                 setup)
-                    if (( CURRENT == 1 )); then
+                    if (( CURRENT == 2 )); then
                         _airlab_complete_targets
                         compadd -- --help
                         return
                     fi
+                    # For positions after the target, drop the subcommand
+                    # so _arguments parses flags from words[1] onwards.
+                    shift words
+                    (( CURRENT-- ))
                     _arguments -s \
                         '--path=[path]:path:_airlab_complete_airlab_path' \
                         '--force[force setup]' \
@@ -224,31 +228,37 @@ _airlab() {
                     ;;
 
                 ssh)
-                    if (( CURRENT == 1 )); then
+                    if (( CURRENT == 2 )); then
                         _airlab_complete_robots
                         compadd -- --help
                         return
                     fi
+                    shift words
+                    (( CURRENT-- ))
                     _arguments -s \
                         '--password[use password auth]' \
                         '--help[show help]'
                     ;;
 
                 auth|ping)
-                    if (( CURRENT == 1 )); then
+                    if (( CURRENT == 2 )); then
                         _airlab_complete_robots
                         compadd -- --help
                         return
                     fi
+                    shift words
+                    (( CURRENT-- ))
                     _arguments -s '--help[show help]'
                     ;;
 
                 sync)
-                    if (( CURRENT == 1 )); then
+                    if (( CURRENT == 2 )); then
                         _airlab_complete_robots
                         compadd -- --help
                         return
                     fi
+                    shift words
+                    (( CURRENT-- ))
                     _arguments -s \
                         '--dry-run[dry run]' \
                         '--delete[delete extraneous files]' \
@@ -261,11 +271,13 @@ _airlab() {
                     ;;
 
                 launch)
-                    if (( CURRENT == 1 )); then
+                    if (( CURRENT == 2 )); then
                         _airlab_complete_targets
                         compadd -- --help
                         return
                     fi
+                    shift words
+                    (( CURRENT-- ))
                     _arguments -s \
                         '--yaml_file=[YAML file]:yaml file:' \
                         '--stop[stop launch]' \
@@ -274,11 +286,13 @@ _airlab() {
                     ;;
 
                 set_env)
-                    if (( CURRENT == 1 )); then
+                    if (( CURRENT == 2 )); then
                         _airlab_complete_targets
                         compadd -- --help -h
                         return
                     fi
+                    shift words
+                    (( CURRENT-- ))
                     _arguments -s \
                         '--password[use password auth]' \
                         '--help[show help]' \
@@ -286,11 +300,13 @@ _airlab() {
                     ;;
 
                 set_hosts)
-                    if (( CURRENT == 1 )); then
+                    if (( CURRENT == 2 )); then
                         _airlab_complete_targets
                         compadd -- --help
                         return
                     fi
+                    shift words
+                    (( CURRENT-- ))
                     _arguments -s \
                         '--password[use password auth]' \
                         '--help[show help]'
