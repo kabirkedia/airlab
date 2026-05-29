@@ -19,6 +19,7 @@ function show_usage() {
     echo "  docker-list                   List active Docker containers."
     echo "  docker-clean                  Stop and remove all Docker containers."
     echo "  vcs                           Manage multiple repositories with common git functions."
+    echo "  a                             Run a user-defined alias command (see 'airlab a --help')."
     echo "  ping                          Ping a remote robot."
     echo "  ssh                           Connect to a remote machine using SSH."
     echo "  auth                          Install SSH public key on a remote robot for password-less access."
@@ -83,7 +84,11 @@ case "$COMMAND" in
     vcs)
         # Do git operations on multiple repositories
         /usr/local/bin/cmds/version-control/vcs "$@"
-        ;; 
+        ;;
+    a)
+        # Run a user-defined alias command from $AIRLAB_ALIAS_PATH
+        /usr/local/bin/cmds/alias "$@"
+        ;;
     ping)
         # Ping a remote robot
         /usr/local/bin/cmds/ping "$@"

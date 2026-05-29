@@ -1,0 +1,344 @@
+#!/bin/bash
+#
+# airlab a — run user-defined "alias" commands (custom verbs).
+#
+# Aliases are plain .sh / .py scripts living under the colon-separated dirs in
+# $AIRLAB_ALIAS_PATH (default: $AIRLAB_PATH/alias). The command name is the file
+# path relative to its alias dir, with the extension dropped and folders kept as
+# a slash-nested hierarchy:
+#
+#   $AIRLAB_ALIAS_PATH/fleet/build.sh   ->   airlab a fleet/build
+#
+# Each alias must declare `@desc:` and `@author:` header comments and handle
+# --help (enforced by `airlab a --lint`, which CI in the alias-hosting repo runs).
+
+# Color codes for output
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly NC='\033[0m' # No Color
+
+# Logging functions
+log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
+
+# Supported alias file extensions, in collision-detection order.
+readonly ALIAS_EXTS=(sh py)
+
+# Where this script lives (to find bundled templates when running from the repo).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Locate a bundled alias template (.sh/.py). Checks the installed path first,
+# then a path relative to this script (so it works from a repo checkout too).
+template_path() {
+    local ext="$1" c
+    for c in \
+        "/usr/share/airlab/alias-templates/alias.$ext" \
+        "$SCRIPT_DIR/../../../share/airlab/alias-templates/alias.$ext"; do
+        [[ -f "$c" ]] && { echo "$c"; return 0; }
+    done
+    return 1
+}
+
+show_usage() {
+    cat << EOF
+Usage: airlab a [<alias>] [--help]
+       airlab a --lint [PATH...]
+       airlab a --new <alias> [--py]
+
+Run a user-defined alias command. Aliases are .sh / .py scripts under the
+colon-separated dirs in \$AIRLAB_ALIAS_PATH (default: \$AIRLAB_PATH/alias).
+The alias name is the file path relative to its alias dir, extension dropped,
+folders kept (e.g. fleet/build.sh -> 'airlab a fleet/build').
+
+Arguments:
+    <alias>      Alias to run (slash-nested path, no extension).
+                 With no alias, lists all available aliases.
+
+Options:
+    --help, -h   Show this help, or (after an alias) forward --help to the alias.
+    --lint       Check that aliases declare @desc + @author and handle --help.
+                 PATH... may be dirs or files; defaults to all \$AIRLAB_ALIAS_PATH.
+    --new        Scaffold a new alias from the template (--py for a Python one).
+
+Authoring:
+    Every alias must contain header comments and handle --help:
+        # @desc:   one-line description (shown by 'airlab a')
+        # @author: Name <handle>        (owner, for PR assignment)
+
+Notes:
+    - v1 forwards NO arguments to the alias except --help/-h (arg passthrough
+      is planned for a later version).
+    - The alias runs locally, in your current directory, with airlab.env and the
+      airlab venv already active. \$AIRLAB_ALIAS_SELF / \$AIRLAB_ALIAS_DIR /
+      \$AIRLAB_ALIAS_NAME are exported for the alias to use.
+
+Examples:
+    airlab a                       # list all aliases
+    airlab a fleet/build           # run the fleet/build alias
+    airlab a fleet/build --help    # show that alias's own help
+    airlab a --new fleet/deploy    # scaffold a new bash alias
+    airlab a --lint                # lint every alias (used by CI)
+EOF
+}
+
+# Resolve the colon-separated alias search path into ALIAS_DIRS[].
+resolve_alias_dirs() {
+    local raw="${AIRLAB_ALIAS_PATH:-}"
+    if [[ -z "$raw" ]]; then
+        if [[ -z "${AIRLAB_PATH:-}" ]]; then
+            log_error "Neither AIRLAB_ALIAS_PATH nor AIRLAB_PATH is set. Run 'airlab setup local' first."
+            return 1
+        fi
+        raw="${AIRLAB_PATH}/alias"
+    fi
+    IFS=':' read -r -a ALIAS_DIRS <<< "$raw"
+}
+
+# Read a header metadata field (@desc / @author) from the top of an alias file.
+# Usage: meta_field <file> <field>
+meta_field() {
+    local file="$1" field="$2"
+    sed -n "s/^#[[:space:]]*@${field}:[[:space:]]*\(.*\)/\1/p" "$file" 2>/dev/null | head -n1
+}
+
+# Does the file reference --help? (static check for the linter; --help is the
+# contract flag every alias must handle)
+has_help_handler() {
+    grep -q -- '--help' "$1" 2>/dev/null
+}
+
+# Map an alias file to its interpreter by extension.
+interp_for() {
+    case "${1##*.}" in
+        sh) echo bash ;;
+        py) echo python3 ;;
+        *)  echo "" ;;
+    esac
+}
+
+# ---------------------------------------------------------------------------
+# list
+# ---------------------------------------------------------------------------
+list_aliases() {
+    resolve_alias_dirs || return 1
+
+    declare -A owner_file   # relname -> first-seen file
+    declare -A owner_dir    # relname -> first-seen dir
+    declare -A collided     # relname -> 1
+    local found_any=0 d f rel prevdir
+
+    for d in "${ALIAS_DIRS[@]}"; do
+        [[ -d "$d" ]] || continue
+        while IFS= read -r -d '' f; do
+            rel="${f#"$d"/}"; rel="${rel%.*}"
+            if [[ -n "${owner_file[$rel]:-}" ]]; then
+                # Already seen. Same owning dir + other extension => collision.
+                prevdir="${owner_dir[$rel]}"
+                [[ "$prevdir" == "$d" ]] && collided[$rel]=1
+                continue
+            fi
+            owner_file[$rel]="$f"
+            owner_dir[$rel]="$d"
+            found_any=1
+        done < <(find "$d" -type f \( -name '*.sh' -o -name '*.py' \) -print0 2>/dev/null | sort -z)
+    done
+
+    if [[ "$found_any" -eq 0 ]]; then
+        log_warn "No aliases found under: ${ALIAS_DIRS[*]}"
+        echo "Create one with:  airlab a --new <name>"
+        return 0
+    fi
+
+    echo -e "${YELLOW}Available aliases${NC}  (\$AIRLAB_ALIAS_PATH: ${ALIAS_DIRS[*]})"
+    echo ""
+    local rel desc author
+    while IFS= read -r rel; do
+        if [[ -n "${collided[$rel]:-}" ]]; then
+            printf "  ${RED}%-28s${NC} %s\n" "$rel" "[COLLISION: both .sh and .py exist — resolve before use]"
+            continue
+        fi
+        desc="$(meta_field "${owner_file[$rel]}" desc)"
+        author="$(meta_field "${owner_file[$rel]}" author)"
+        printf "  ${GREEN}%-28s${NC} %s" "$rel" "${desc:-<no @desc>}"
+        [[ -n "$author" ]] && printf "  ${BLUE}(%s)${NC}" "$author"
+        printf "\n"
+    done < <(printf '%s\n' "${!owner_file[@]}" | sort)
+}
+
+# ---------------------------------------------------------------------------
+# resolve a requested alias name to a single runnable file
+# Sets RESOLVED_FILE on success. Prints an error and returns non-zero otherwise.
+# ---------------------------------------------------------------------------
+resolve_alias() {
+    local name="$1"
+    resolve_alias_dirs || return 1
+    RESOLVED_FILE=""
+
+    local d matches=() is_dir=0 ext cand
+    for d in "${ALIAS_DIRS[@]}"; do
+        [[ -d "$d" ]] || continue
+        matches=(); is_dir=0
+        for ext in "${ALIAS_EXTS[@]}"; do
+            cand="$d/$name.$ext"
+            [[ -f "$cand" ]] && matches+=("$cand")
+        done
+        [[ -d "$d/$name" ]] && is_dir=1
+
+        # First dir that owns the name decides (earlier-entry precedence).
+        if [[ "${#matches[@]}" -gt 0 || "$is_dir" -eq 1 ]]; then
+            if [[ "${#matches[@]}" -gt 1 ]]; then
+                log_error "Alias '$name' is ambiguous in $d: $(basename "${matches[0]}") and $(basename "${matches[1]}"). Remove one."
+                return 1
+            fi
+            if [[ "${#matches[@]}" -eq 1 && "$is_dir" -eq 1 ]]; then
+                log_error "Alias '$name' is ambiguous in $d: it is both a file ($(basename "${matches[0]}")) and a group (directory)."
+                return 1
+            fi
+            if [[ "${#matches[@]}" -eq 0 && "$is_dir" -eq 1 ]]; then
+                log_error "'$name' is a group (directory), not a runnable alias. Run 'airlab a' to list aliases."
+                return 1
+            fi
+            RESOLVED_FILE="${matches[0]}"
+            return 0
+        fi
+    done
+
+    log_error "Alias not found: '$name'. Run 'airlab a' to list available aliases."
+    return 1
+}
+
+# ---------------------------------------------------------------------------
+# run an alias (exit-code passthrough; v1 forwards only --help/-h)
+# ---------------------------------------------------------------------------
+run_alias() {
+    local name="$1"; shift
+
+    # v1 argument policy: nothing forwarded except a lone --help/-h.
+    if [[ "$#" -gt 0 ]]; then
+        if [[ "$#" -ne 1 || ( "$1" != "--help" && "$1" != "-h" ) ]]; then
+            log_error "Argument passthrough is not supported in v1 (only --help/-h). Got: $*"
+            return 2
+        fi
+    fi
+
+    resolve_alias "$name" || return 1
+
+    local file="$RESOLVED_FILE" dir interp
+    dir="$(cd "$(dirname "$file")" && pwd)"
+    interp="$(interp_for "$file")"
+    if [[ -z "$interp" ]]; then
+        log_error "Unsupported alias type: $file (only .sh and .py)."
+        return 1
+    fi
+
+    export AIRLAB_ALIAS_SELF="$file"
+    export AIRLAB_ALIAS_DIR="$dir"
+    export AIRLAB_ALIAS_NAME="$name"
+
+    # exec so the alias's exit code becomes ours; run in the caller's PWD.
+    exec "$interp" "$file" "$@"
+}
+
+# ---------------------------------------------------------------------------
+# lint (static): each alias must have @desc, @author, and a --help handler
+# ---------------------------------------------------------------------------
+lint_aliases() {
+    local -a targets=()
+    if [[ "$#" -gt 0 ]]; then
+        targets=("$@")
+    else
+        resolve_alias_dirs || return 1
+        targets=("${ALIAS_DIRS[@]}")
+    fi
+
+    # Expand dirs to files; keep explicit files.
+    local -a files=()
+    local t
+    for t in "${targets[@]}"; do
+        if [[ -d "$t" ]]; then
+            while IFS= read -r -d '' f; do files+=("$f"); done \
+                < <(find "$t" -type f \( -name '*.sh' -o -name '*.py' \) -print0 2>/dev/null | sort -z)
+        elif [[ -f "$t" ]]; then
+            case "$t" in *.sh|*.py) files+=("$t") ;; *) ;; esac
+        fi
+    done
+
+    if [[ "${#files[@]}" -eq 0 ]]; then
+        log_warn "No alias files (.sh/.py) found to lint in: ${targets[*]}"
+        return 0
+    fi
+
+    local fail=0 f problems
+    for f in "${files[@]}"; do
+        problems=""
+        [[ -z "$(meta_field "$f" desc)" ]]   && problems+=" missing-@desc"
+        [[ -z "$(meta_field "$f" author)" ]] && problems+=" missing-@author"
+        has_help_handler "$f"                || problems+=" no---help-handler"
+        if [[ -n "$problems" ]]; then
+            echo -e "  ${RED}FAIL${NC} $f:$problems"
+            fail=1
+        else
+            echo -e "  ${GREEN}OK  ${NC} $f"
+        fi
+    done
+
+    if [[ "$fail" -ne 0 ]]; then
+        log_error "Alias lint failed. Every alias needs '# @desc:', '# @author:' and a --help handler."
+        return 1
+    fi
+    log_info "All ${#files[@]} alias file(s) passed lint."
+    return 0
+}
+
+# ---------------------------------------------------------------------------
+# new (scaffold from template)
+# ---------------------------------------------------------------------------
+new_alias() {
+    local py=0 name=""
+    while [[ "$#" -gt 0 ]]; do
+        case "$1" in
+            --py) py=1 ;;
+            -h|--help) show_usage; return 0 ;;
+            -*) log_error "Unknown option: $1"; return 1 ;;
+            *) name="$1" ;;
+        esac
+        shift
+    done
+    [[ -z "$name" ]] && { log_error "Usage: airlab a --new <alias> [--py]"; return 1; }
+
+    resolve_alias_dirs || return 1
+    local base="${ALIAS_DIRS[0]}"
+    local ext="sh"; [[ "$py" -eq 1 ]] && ext="py"
+    local dest="$base/$name.$ext"
+    local tmpl
+    if ! tmpl="$(template_path "$ext")"; then
+        log_error "Alias template (alias.$ext) not found."; return 1
+    fi
+
+    if [[ -e "$dest" ]]; then
+        log_error "Already exists: $dest"; return 1
+    fi
+
+    mkdir -p "$(dirname "$dest")"
+    local author; author="$(git config user.name 2>/dev/null)"; author="${author:-$USER}"
+    sed -e "s|{{NAME}}|$name|g" -e "s|{{AUTHOR}}|$author|g" "$tmpl" > "$dest"
+    chmod +x "$dest"
+    log_info "Created alias: $dest"
+    echo "Edit it, then run:  airlab a $name"
+}
+
+# ===========================================================================
+# main
+# ===========================================================================
+sub="${1:-}"
+case "$sub" in
+    "")           list_aliases ;;
+    -h|--help)    show_usage ;;
+    --lint)       shift; lint_aliases "$@" ;;
+    --new)        shift; new_alias "$@" ;;
+    --*)          log_error "Unknown option: $sub"; show_usage; exit 1 ;;
+    *)            shift; run_alias "$sub" "$@" ;;
+esac
