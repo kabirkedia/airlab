@@ -10,6 +10,7 @@ A suite of local version control system (VCS) commands for managing multiple rep
 - [update](#update): Pull, init missing repos, and pull again with summary
 - [check](#check): Find drift across cloned repos or version_control YAMLs
 - [tag](#tag): Recursively tag git repositories under the current directory
+- [checkout](#checkout): Recursively `git checkout <ref>` (branch or tag) in every repo under PWD, with a colored post-state summary
 - [examples](#examples)
 
 ## init
@@ -195,6 +196,49 @@ airlab vcs tag <tag_name> [OPTIONS]
 2. `airlab vcs tag <name>` to validate locally
 3. `airlab vcs push --tags=<name>` (or re-run `airlab vcs tag <name> --push`) to publish
 
+## checkout
+
+### Description
+Recursively run `git checkout <ref>` in every repository under the current directory, skipping submodules. `<ref>` may be a branch or tag. After each checkout, the new state is summarized in a colored table.
+
+### Usage
+```bash
+airlab vcs checkout <ref> [OPTIONS]
+```
+
+### Arguments
+- `<ref>`: Branch or tag name to check out.
+
+### Options
+- `--no-fetch`: Skip `git fetch --tags origin` before checkout. Faster, but tag availability and ahead/behind counts may be stale.
+- `--force`, `-f`: Pass `-f` to `git checkout`, discarding local uncommitted changes. Use with care.
+- `--no-progress`: Disable the progress bar (also auto-disabled when stderr is not a terminal).
+- `--help`: Display help message.
+
+### Behavior
+1. Walks PWD with the same logic as `airlab vcs check` (skips submodules and linked worktrees).
+2. For each repo: `git fetch --quiet --tags origin` (unless `--no-fetch`). Fetch failure is reported per-repo and stops that repo's processing.
+3. For each repo: `git checkout <ref>` (or with `-f` when `--force`).
+   - If `<ref>` is a branch on `origin` but not yet local, git's DWIM creates a tracking branch automatically.
+   - If `<ref>` is a tag, the result is a detached HEAD (reported as `on tag`).
+   - If `<ref>` does not exist on the repo (not a local branch, not a tag, not `origin/<ref>`), the row reports `ref MISSING`.
+   - If the working tree is dirty and checkout would overwrite changes, the row reports `FAILED (dirty)` (use `--force` to override).
+4. After a successful checkout, the script reports:
+   - Ahead/behind upstream when on a branch with tracking (`+N`/`-N`).
+   - Submodule SHA changes (the recorded SHA of any submodule changing between pre- and post-checkout is counted).
+
+### Output sections
+- Per-repo row colored by status:
+  - **green** `ok` — checked out, on ref, up to date (or no remote to compare against).
+  - **yellow** `warn` — checked out but ahead/behind upstream, or submodule SHAs changed.
+  - **red** `err` — `ref MISSING`, `FAILED`, `FAILED (dirty)`, or `fetch FAILED`.
+- Rows are sorted err → warn → ok, then by path.
+- A trailing summary line counts repos in each status bucket.
+
+### Exit codes
+- `0` — all repos cleanly on the requested ref and up to date.
+- `1` — any repo has a `warn` or `err` status.
+
 ## Common Features
 
 ### Configuration
@@ -283,4 +327,16 @@ airlab vcs tag v1.0.0 --push --dry-run
 
 # push an existing tag (after the fact), deduplicated
 airlab vcs push --tags=v1.0.0
+
+# recursively check out 'main' in every repo under PWD (fetches first)
+airlab vcs checkout main
+
+# check out a tag in every repo; repos without that tag are reported
+airlab vcs checkout v1.0.0
+
+# faster checkout when you already fetched recently
+airlab vcs checkout main --no-fetch
+
+# discard local uncommitted changes during checkout
+airlab vcs checkout main --force
 ```
