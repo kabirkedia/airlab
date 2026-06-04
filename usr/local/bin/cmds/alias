@@ -69,8 +69,8 @@ Authoring:
         # @author: Name <handle>        (owner, for PR assignment)
 
 Notes:
-    - v1 forwards NO arguments to the alias except --help/-h (arg passthrough
-      is planned for a later version).
+    - All arguments after the alias name are forwarded to the alias, which parses
+      its own flags (including --help), e.g. 'airlab a fleet/sync spirit-nx3 --cleanup'.
     - The alias runs locally, in your current directory, with airlab.env and the
       airlab venv already active. \$AIRLAB_ALIAS_SELF / \$AIRLAB_ALIAS_DIR /
       \$AIRLAB_ALIAS_NAME are exported for the alias to use.
@@ -211,18 +211,13 @@ resolve_alias() {
 }
 
 # ---------------------------------------------------------------------------
-# run an alias (exit-code passthrough; v1 forwards only --help/-h)
+# run an alias (exit-code + argument passthrough)
 # ---------------------------------------------------------------------------
 run_alias() {
     local name="$1"; shift
 
-    # v1 argument policy: nothing forwarded except a lone --help/-h.
-    if [[ "$#" -gt 0 ]]; then
-        if [[ "$#" -ne 1 || ( "$1" != "--help" && "$1" != "-h" ) ]]; then
-            log_error "Argument passthrough is not supported in v1 (only --help/-h). Got: $*"
-            return 2
-        fi
-    fi
+    # v2: forward ALL arguments after the alias name to the alias; it parses its
+    # own flags (including --help). (v1 rejected everything but a lone --help/-h.)
 
     resolve_alias "$name" || return 1
 

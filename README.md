@@ -933,7 +933,7 @@ airlab a --lint                # lint all aliases (used by CI)
 #### How aliases run
 
 *   On the **local machine**, in your **current directory**, with `airlab.env` and the airlab venv already active — so an alias can call other `airlab` verbs and read `$AIRLAB_PATH`.
-*   Exit code is passed through. **v1 forwards no arguments except `--help`/`-h`** (argument passthrough is planned for a later version).
+*   Exit code is passed through. **All arguments after the alias name are forwarded to the alias** (it parses its own flags, including `--help`) — e.g. `airlab a fleet/sync spirit-nx3 --cleanup`.
 *   These variables are exported for the alias: `AIRLAB_ALIAS_SELF` (its path), `AIRLAB_ALIAS_DIR` (its folder — handy for finding a file bundled beside it), `AIRLAB_ALIAS_NAME`.
 
 #### Authoring contract

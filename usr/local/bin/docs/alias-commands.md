@@ -30,7 +30,7 @@ $AIRLAB_ALIAS_PATH/tools/report.py       →  airlab a tools/report
 - With `airlab.env` and the airlab venv already active — so the alias can call other `airlab` verbs and read `$AIRLAB_PATH`.
 - `.sh` runs under `bash`; `.py` runs under `python3` (the active venv).
 - **Exit code is passed through.**
-- **v1 forwards no arguments except `--help`/`-h`.** Argument passthrough (and per-alias argument completion) is deferred to a later version; passing other arguments is an error.
+- **All arguments after the alias name are forwarded to the alias**, which parses its own flags (including `--help`) — e.g. `airlab a fleet/sync spirit-nx3 --cleanup`. (Per-alias argument *completion* is still deferred.)
 - Exported for the alias to use:
   - `AIRLAB_ALIAS_SELF` — absolute path to the alias file.
   - `AIRLAB_ALIAS_DIR` — the alias file's directory (find resources bundled beside it).
