@@ -109,14 +109,26 @@ save_env() {
 
 setup_bashrc() {
     local env_path="$1"
-    local bashrc="$USER_HOME/.bashrc"
     local env_source="set -o allexport; source $env_path/airlab.env; set +o allexport"
 
-    if ! grep -q "source $env_path/airlab.env" "$bashrc"; then
+    # .bashrc (always)
+    local bashrc="$USER_HOME/.bashrc"
+    if ! grep -q "source $env_path/airlab.env" "$bashrc" 2>/dev/null; then
         echo "$env_source" >> "$bashrc" || error_exit "Failed to update .bashrc"
         log_info "Updated .bashrc with environment configuration"
     else
         log_info ".bashrc already configured"
+    fi
+
+    # .zshrc (zsh users: a default-zsh login shell, or an existing .zshrc)
+    local login_shell zshrc="$USER_HOME/.zshrc"
+    login_shell=$(getent passwd "${SUDO_USER:-$USER}" 2>/dev/null | cut -d: -f7)
+    if command -v zsh >/dev/null 2>&1 && { [ -f "$zshrc" ] || [ "$(basename "${login_shell:-}")" = "zsh" ]; }; then
+        touch "$zshrc"
+        if ! grep -q "source $env_path/airlab.env" "$zshrc" 2>/dev/null; then
+            echo "$env_source" >> "$zshrc"
+            log_info "Updated .zshrc with environment configuration"
+        fi
     fi
 }
 
@@ -666,6 +678,8 @@ EOF
     remote_exec "$robot_ssh_address" "sed -i '/source .*airlab.env/d' ~/.bashrc" "$robot_password"
     remote_exec "$robot_ssh_address" "grep -q 'source $airlab_path/airlab.env' ~/.bashrc || \
         echo 'set -o allexport; source $airlab_path/airlab.env; set +o allexport' >> ~/.bashrc" "$robot_password"
+    # Update remote .zshrc for zsh users (default-zsh target, or an existing .zshrc)
+    remote_exec "$robot_ssh_address" "if command -v zsh >/dev/null 2>&1 && { [ -f ~/.zshrc ] || [ \"\$(basename \${SHELL:-})\" = zsh ]; }; then touch ~/.zshrc; sed -i '/source .*airlab.env/d' ~/.zshrc; grep -q 'source $airlab_path/airlab.env' ~/.zshrc || echo 'set -o allexport; source $airlab_path/airlab.env; set +o allexport' >> ~/.zshrc; fi" "$robot_password"
 
     cat << EOF
 Installation details:
@@ -673,7 +687,7 @@ Installation details:
   - Path: $airlab_path
   - System: $robot_name
   
-Note: Run 'source ~/.bashrc' on the remote system to apply changes
+Note: Run 'source ~/.bashrc' (or ~/.zshrc) on the remote system to apply changes
 EOF
     log_info "✅ Remote setup completed successfully!"
 

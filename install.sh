@@ -99,8 +99,9 @@ else
         if ! grep -q 'source ~/VENVs/airlab/bin/activate' ~/.bashrc; then
             echo 'source ~/VENVs/airlab/bin/activate' >> ~/.bashrc
         fi
-        # Also add to .zshrc if zsh is installed and .zshrc exists or zsh is the login shell.
-        if command -v zsh >/dev/null 2>&1 && [ -f ~/.zshrc ]; then
+        # Also add to .zshrc for zsh users (default-zsh login shell, or an existing .zshrc).
+        if command -v zsh >/dev/null 2>&1 && { [ -f ~/.zshrc ] || [ "$(basename "${SHELL:-}")" = "zsh" ]; }; then
+            touch ~/.zshrc
             if ! grep -q 'source ~/VENVs/airlab/bin/activate' ~/.zshrc; then
                 echo 'source ~/VENVs/airlab/bin/activate' >> ~/.zshrc
             fi
@@ -159,8 +160,9 @@ dpkg-deb --build "$STAGING_DIR" "$SCRIPT_DIR/../airlab.deb"
 # Install the DEB package.
 sudo dpkg -i "$SCRIPT_DIR/../airlab.deb"
 
-# Set up zsh integration if zsh is installed.
-if command -v zsh >/dev/null 2>&1 && [ -f ~/.zshrc ]; then
+# Set up zsh integration for zsh users (default-zsh login shell, or an existing .zshrc).
+if command -v zsh >/dev/null 2>&1 && { [ -f ~/.zshrc ] || [ "$(basename "${SHELL:-}")" = "zsh" ]; }; then
+    touch ~/.zshrc
     # Source the airlab shell function wrapper for "airlab cd" support.
     if ! grep -q 'source /etc/airlab/airlab.zsh' ~/.zshrc; then
         echo '# Airlab shell function (enables "airlab cd")' >> ~/.zshrc
