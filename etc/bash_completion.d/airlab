@@ -32,13 +32,25 @@ airlab() {
     fi
 }
 
-# Helper: read robot names from robot.conf
+# Helper: read robot/system names from robot.conf AND the target registry (robots.yaml).
 _airlab_robot_names() {
     local conf="${AIRLAB_PATH:-}/robot/robot.conf"
-    if [[ -f "$conf" ]]; then
-        # Extract robot names (lines like "name=user@host", ignoring comments/blanks)
-        sed -n 's/^\([A-Za-z0-9_-]\+\)=.*/\1/p' "$conf" 2>/dev/null
-    fi
+    local robots_py="${AIRLAB_PATH:-}/robot/robots.py"
+    {
+        if [[ -f "$conf" ]]; then
+            # Extract robot names (lines like "name=user@host", ignoring comments/blanks)
+            sed -n 's/^\([A-Za-z0-9_-]\+\)=.*/\1/p' "$conf" 2>/dev/null
+        fi
+        [[ -f "$robots_py" ]] && python3 "$robots_py" list 2>/dev/null
+    } | sort -u
+}
+
+# Helper: list a system's network address names from robots.yaml (for `ssh --address=`).
+_airlab_address_names() {
+    local system="$1"
+    local robots_py="${AIRLAB_PATH:-}/robot/robots.py"
+    [[ -n "$system" && -f "$robots_py" ]] || return
+    python3 "$robots_py" addresses "$system" 2>/dev/null
 }
 
 # Helper: generate robot names plus "local"
@@ -232,7 +244,12 @@ docker-build docker-up docker-join docker-list docker-clean vcs a cd --help --ve
                 COMPREPLY=( $(compgen -W "$(_airlab_robot_names) --help" -- "$cur") )
                 return
             fi
-            COMPREPLY=( $(compgen -W "--password --help" -- "$cur") )
+            # Complete address names for "--address=<TAB>" (system is words[2]).
+            if [[ "$eq_opt" == "--address" ]]; then
+                COMPREPLY=( $(compgen -W "$(_airlab_address_names "${words[2]}")" -- "$cur") )
+                return
+            fi
+            COMPREPLY=( $(compgen -W "--address= --password --help" -- "$cur") )
             ;;
 
         auth)

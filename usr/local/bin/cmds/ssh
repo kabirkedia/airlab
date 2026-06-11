@@ -166,6 +166,9 @@ main() {
                 ADDRESS="$2"
                 shift
                 ;;
+            --address=*)
+                ADDRESS="${1#--address=}"
+                ;;
             *)
                 log_error "Invalid option: $1"
                 show_usage
