@@ -6,6 +6,9 @@ USER_HOME=$(getent passwd $SUDO_USER | cut -d: -f6)
 readonly ENV_FILE="/etc/airlab/airlab.env"
 readonly DEFAULT_AIRLAB_PATH="$USER_HOME/airlab_ws"
 
+# Shared SSH-address resolution (--address via robots.yaml, robot.conf fallback)
+source "$(dirname "$0")/_lib/resolve.sh"
+
 # Color codes for output
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
@@ -28,6 +31,8 @@ show_usage() {
     echo
     echo -e "${YELLOW}Options:${NC}"
     echo "  --path=<path>           Custom installation path (default: $DEFAULT_AIRLAB_PATH)"
+    echo "  --address=<name>        Use a named network address from robots.yaml (e.g. internet, vpn)"
+    echo "                          (NOTE: a port-bearing address works for ssh but not the scp/install steps)"
     echo "  --force                 Force overwrite without prompting (use with caution)"
     echo "  --password              Skip key-based SSH and prompt for password directly"
     echo
@@ -55,11 +60,15 @@ parse_args() {
     local path="$DEFAULT_AIRLAB_PATH"
     local force=false
     local password=false
+    local address=""
 
     for arg in "${args[@]}"; do
         case "$arg" in
             --path=*)
                 path="${arg#--path=}"
+                ;;
+            --address=*)
+                address="${arg#--address=}"
                 ;;
             --force)
                 force=true
@@ -76,7 +85,7 @@ parse_args() {
         esac
     done
 
-    echo "$path $force $password"
+    echo "$path $force $password $address"
 }
 
 # Environment management functions
@@ -402,6 +411,7 @@ setup_remote() {
     local airlab_path="$2"
     local force="$3"
     local force_password="${4:-false}"
+    local address="${5:-}"
 
     # Validate robot configuration
     source $USER_HOME/.bashrc
@@ -409,10 +419,12 @@ setup_remote() {
     local robots_conf="$remote_path/robot/robot.conf"
     [[ ! -f "$robots_conf" ]] && error_exit "Robot configuration not found: $robots_conf"
 
-    # Get robot SSH address
+    # Resolve robot SSH address (registry-aware; robot.conf fallback).
+    # NOTE: a named --address that carries a PORT (ssh://user@host:port) works for ssh but NOT
+    # for the scp/install copy steps below; for a remote port use a no-port (VPN/Tailscale) address.
     local robot_ssh_address
-    robot_ssh_address=$(grep "^$robot_name=" "$robots_conf" | cut -d= -f2)
-    [[ -z "$robot_ssh_address" ]] && error_exit "Robot '$robot_name' not found in configuration"
+    robot_ssh_address=$(resolve_ssh_address "$robot_name" "$address")
+    [[ -z "$robot_ssh_address" ]] && error_exit "Robot '$robot_name'${address:+ (address '$address')} not found in robots.yaml or $robots_conf"
 
     # Authenticate via SSH (robot_password is set by ssh_authenticate)
     robot_password=""
@@ -681,7 +693,7 @@ main() {
     local command="$1"
     shift
 
-    read -r AIRLAB_PATH FORCE FORCE_PASSWORD <<< "$(parse_args "$@")"
+    read -r AIRLAB_PATH FORCE FORCE_PASSWORD ADDRESS <<< "$(parse_args "$@")"
 
     case "$command" in
         local)
@@ -691,7 +703,7 @@ main() {
             show_usage
             ;;
         *)
-            setup_remote "$command" "~/airlab_ws" "$FORCE" "$FORCE_PASSWORD"
+            setup_remote "$command" "~/airlab_ws" "$FORCE" "$FORCE_PASSWORD" "$ADDRESS"
             ;;
     esac
 }

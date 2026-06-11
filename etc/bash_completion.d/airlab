@@ -241,7 +241,7 @@ docker-build docker-up docker-join docker-list docker-clean vcs a cd --help --ve
             fi
             # Remaining positions: options
             if [[ "$cur" == --* ]]; then
-                COMPREPLY=( $(compgen -W "--path= --force --password --help" -- "$cur") )
+                COMPREPLY=( $(compgen -W "--path= --address= --force --password --help" -- "$cur") )
             fi
             ;;
 

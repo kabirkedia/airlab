@@ -274,6 +274,7 @@ _airlab() {
                     (( CURRENT-- ))
                     _arguments -s \
                         '--path=[path]:path:_airlab_complete_airlab_path' \
+                        '--address=[network address from robots.yaml]:address:_airlab_complete_addresses' \
                         '--force[force setup]' \
                         '--password[use password auth]' \
                         '--help[show help]'
