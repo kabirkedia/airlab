@@ -3,6 +3,9 @@
 # Exit on error, undefined variables, and pipe failures
 set -uo pipefail
 
+# Shared SSH-address resolution (--address via robots.yaml, robot.conf fallback)
+source "$(dirname "$0")/_lib/resolve.sh"
+
 # Color codes for output
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
@@ -30,6 +33,7 @@ show_usage() {
     echo "  --time                    Sync the system time on the remote machine with the local time (requires sudo access on remote)"
     echo "  --progress               Show progress during the sync operation (useful for large transfers)"
     echo "                           Note: This option may slow down the sync process for large files."
+    echo "  --address=<name>          Use a named network address from robots.yaml (e.g. internet)"
     echo "  --password                Skip key-based SSH and prompt for password directly"
     echo "  --help                    Show this help message"
     echo
@@ -212,6 +216,7 @@ main() {
     DELETE=false
     PROGRESS=false
     FORCE_PASSWORD=false
+    ADDRESS=""
     EXCLUDE_PATTERNS=()
     shift  # Remove the first argument (ROBOT_NAME)
 
@@ -236,6 +241,13 @@ main() {
             --exclude=*)
                 EXCLUDE_PATTERNS+=("--exclude=${1#--exclude=}")
                 ;;
+            --address)
+                ADDRESS="$2"
+                shift
+                ;;
+            --address=*)
+                ADDRESS="${1#--address=}"
+                ;;
             --password)
                 FORCE_PASSWORD=true
                 ;;
@@ -255,10 +267,10 @@ main() {
         exit 1
     fi
 
-    # Load the robot's SSH address from robot.conf
-    ROBOT_SSH_ADDRESS=$(grep "^$ROBOT_NAME=" "$ROBOT_CONF" | cut -d= -f2)
+    # Resolve the SSH address (registry-aware; robot.conf fallback)
+    ROBOT_SSH_ADDRESS=$(resolve_ssh_address "$ROBOT_NAME" "$ADDRESS")
     if [[ -z "$ROBOT_SSH_ADDRESS" ]]; then
-        log_error "Robot '$ROBOT_NAME' not found in $ROBOT_CONF"
+        log_error "Robot '$ROBOT_NAME'${ADDRESS:+ (address '$ADDRESS')} not found in robots.yaml or $ROBOT_CONF"
         exit 1
     fi
 
@@ -298,14 +310,14 @@ main() {
         fi
     fi
 
-    # Extract the port if specified in the SSH address
-    # Check if ROBOT_SSH_ADDRESS contains a port
-    if [[ "$ROBOT_SSH_ADDRESS" == *:* ]]; then
-        PORT=${ROBOT_SSH_ADDRESS##*:}
-        EXTRACTED=$(echo "$ROBOT_SSH_ADDRESS" | awk -F':' '{print $2}')
-        CLEANED=${EXTRACTED#//}
-        ROBOT_SSH_ADDRESS=$CLEANED
-        log_info "Syncing to machine $ROBOT_SSH_ADDRESS with port $PORT"
+    # Derive the rsync host (user@host) + SSH port from the resolved address, which may be
+    # "user@host", "user@host:port", or "ssh://user@host:port". Keep ROBOT_SSH_ADDRESS in its
+    # ssh-usable form (ssh accepts the ssh:// URI) for the standalone ssh calls below; rsync
+    # needs the bare user@host plus an explicit -p port.
+    RSYNC_HOST="${ROBOT_SSH_ADDRESS#ssh://}"
+    if [[ "$RSYNC_HOST" == *:* ]]; then
+        PORT="${RSYNC_HOST##*:}"
+        RSYNC_HOST="${RSYNC_HOST%:*}"
     else
         PORT=22
     fi
@@ -352,7 +364,7 @@ main() {
     fi
 
     # Perform the sync
-    log_info "Syncing from $LOCAL_WS_PATH to $ROBOT_SSH_ADDRESS:$REMOTE_WS_PATH"
+    log_info "Syncing from $LOCAL_WS_PATH to $RSYNC_HOST:$REMOTE_WS_PATH (port $PORT)"
 
     if [[ "$SYNC_PATH" != "" ]]; then
         LOCAL_WS_PATH="$LOCAL_WS_PATH/$SYNC_PATH"
@@ -376,7 +388,7 @@ main() {
     if ! "${SSHPASS_PREFIX[@]}" \
         rsync "${RSYNC_OPTS[@]}"\
         "$LOCAL_WS_PATH/" \
-        "$ROBOT_SSH_ADDRESS:$REMOTE_WS_PATH/"; then
+        "$RSYNC_HOST:$REMOTE_WS_PATH/"; then
         log_error "Sync failed"
         exit 1
     fi

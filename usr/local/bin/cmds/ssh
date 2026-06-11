@@ -3,6 +3,9 @@
 # Exit on error, undefined variables, and pipe failures
 set -euo pipefail
 
+# Shared SSH-address resolution (supports --address via robots.yaml, robot.conf fallback)
+source "$(dirname "$0")/_lib/resolve.sh"
+
 # Color codes for output
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
@@ -23,11 +26,13 @@ show_usage() {
     echo "  <robot_name>              Name of the robot to ssh into (must be defined in robot.conf)"
     echo
     echo -e "${YELLOW}Options:${NC}"
+    echo "  --address <name>          Use a named network address from robots.yaml (e.g. internet, vpn)"
     echo "  --password                Skip key-based SSH and prompt for password directly"
     echo "  --help                    Show this help message"
     echo
     echo -e "${YELLOW}Examples:${NC}"
-    echo "  airlab ssh mt001                          # ssh into the robot"
+    echo "  airlab ssh mt001                          # ssh into the robot (default address)"
+    echo "  airlab ssh spot1-phys --address internet  # via the internet/port-forward address"
 } 
 
 
@@ -134,6 +139,7 @@ main() {
     # Get the robot name
     ROBOT_NAME="$1"
     FORCE_PASSWORD=false
+    ADDRESS=""
     shift
 
     # Parse additional flags
@@ -141,6 +147,13 @@ main() {
         case "$1" in
             --password)
                 FORCE_PASSWORD=true
+                ;;
+            --address)
+                ADDRESS="$2"
+                shift
+                ;;
+            --address=*)
+                ADDRESS="${1#--address=}"
                 ;;
             *)
                 log_error "Invalid option: $1"
@@ -159,10 +172,11 @@ main() {
     fi
 
     set +e
-    # Load the robot's SSH address from robot.conf
-    ROBOT_SSH_ADDRESS=$(grep "^$ROBOT_NAME=" "$ROBOT_CONF" | cut -d= -f2)
+    # Resolve the SSH address: prefer the target registry (robots.yaml via robots.py,
+    # which supports named --address); fall back to robot.conf for compatibility.
+    ROBOT_SSH_ADDRESS=$(resolve_ssh_address "$ROBOT_NAME" "$ADDRESS")
     if [[ -z "$ROBOT_SSH_ADDRESS" ]]; then
-        log_error "Robot '$ROBOT_NAME' not found in $ROBOT_CONF"
+        log_error "Robot '$ROBOT_NAME'${ADDRESS:+ (address '$ADDRESS')} not found in robots.yaml or $ROBOT_CONF"
         exit 1
     fi
 

@@ -3,12 +3,14 @@
 # Zsh completion for the airlab command.
 # Installed to /usr/share/zsh/vendor-completions/_airlab
 
-# Helper: read robot names from robot.conf
+# Helper: read robot/system names from robot.conf AND the target registry (robots.yaml)
 _airlab_robot_names() {
     local conf="${AIRLAB_PATH:-}/robot/robot.conf"
-    if [[ -f "$conf" ]]; then
-        sed -n 's/^\([A-Za-z0-9_-]\+\)=.*/\1/p' "$conf" 2>/dev/null
-    fi
+    local robots_py="${AIRLAB_PATH:-}/robot/robots.py"
+    {
+        [[ -f "$conf" ]] && sed -n 's/^\([A-Za-z0-9_-]\+\)=.*/\1/p' "$conf" 2>/dev/null
+        [[ -f "$robots_py" ]] && python3 "$robots_py" list 2>/dev/null
+    } | sort -u
 }
 
 # Completion action: robot names
@@ -16,6 +18,17 @@ _airlab_complete_robots() {
     local -a robots
     robots=( ${(f)"$(_airlab_robot_names)"} )
     compadd -- "${robots[@]}"
+}
+
+# Completion action: a system's network address names from robots.yaml.
+# In the ssh handler the words array is shifted so words[1] is the system name.
+_airlab_complete_addresses() {
+    local robots_py="${AIRLAB_PATH:-}/robot/robots.py"
+    local system="${words[1]}"
+    [[ -n "$system" && -f "$robots_py" ]] || return
+    local -a addrs
+    addrs=( ${(f)"$(python3 "$robots_py" addresses "$system" 2>/dev/null)"} )
+    (( ${#addrs} )) && compadd -- "${addrs[@]}"
 }
 
 # Completion action: robot names + "local"
@@ -275,6 +288,7 @@ _airlab() {
                     shift words
                     (( CURRENT-- ))
                     _arguments -s \
+                        '--address=[network address from robots.yaml]:address:_airlab_complete_addresses' \
                         '--password[use password auth]' \
                         '--help[show help]'
                     ;;
@@ -287,7 +301,9 @@ _airlab() {
                     fi
                     shift words
                     (( CURRENT-- ))
-                    _arguments -s '--help[show help]'
+                    _arguments -s \
+                        '--address=[network address from robots.yaml]:address:_airlab_complete_addresses' \
+                        '--help[show help]'
                     ;;
 
                 sync)
@@ -305,6 +321,7 @@ _airlab() {
                         '--exclude=[exclude pattern]:exclude:_airlab_complete_airlab_path' \
                         '--time[show timing]' \
                         '--progress[show progress]' \
+                        '--address=[network address from robots.yaml]:address:_airlab_complete_addresses' \
                         '--password[use password auth]' \
                         '--help[show help]'
                     ;;
@@ -320,6 +337,7 @@ _airlab() {
                     _arguments -s \
                         '--yaml_file=[YAML file]:yaml file:' \
                         '--stop[stop launch]' \
+                        '--address=[network address from robots.yaml]:address:_airlab_complete_addresses' \
                         '--password[use password auth]' \
                         '--help[show help]'
                     ;;
@@ -333,6 +351,7 @@ _airlab() {
                     shift words
                     (( CURRENT-- ))
                     _arguments -s \
+                        '--address=[network address from robots.yaml]:address:_airlab_complete_addresses' \
                         '--password[use password auth]' \
                         '--help[show help]' \
                         '-h[show help]'
@@ -347,6 +366,7 @@ _airlab() {
                     shift words
                     (( CURRENT-- ))
                     _arguments -s \
+                        '--address=[network address from robots.yaml]:address:_airlab_complete_addresses' \
                         '--password[use password auth]' \
                         '--help[show help]'
                     ;;
