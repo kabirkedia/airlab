@@ -226,6 +226,12 @@ docker-build docker-up docker-join docker-list docker-clean vcs a cd --help --ve
 
     local cmd="${words[1]}"
 
+    # --address=<TAB>: complete a system's address names (system is words[2]) for any command.
+    if [[ "$eq_opt" == "--address" ]]; then
+        COMPREPLY=( $(compgen -W "$(_airlab_address_names "${words[2]}")" -- "$cur") )
+        return
+    fi
+
     case "$cmd" in
         setup)
             # Position 2: target (local or robot name)
@@ -244,11 +250,6 @@ docker-build docker-up docker-join docker-list docker-clean vcs a cd --help --ve
                 COMPREPLY=( $(compgen -W "$(_airlab_robot_names) --help" -- "$cur") )
                 return
             fi
-            # Complete address names for "--address=<TAB>" (system is words[2]).
-            if [[ "$eq_opt" == "--address" ]]; then
-                COMPREPLY=( $(compgen -W "$(_airlab_address_names "${words[2]}")" -- "$cur") )
-                return
-            fi
             COMPREPLY=( $(compgen -W "--address= --password --help" -- "$cur") )
             ;;
 
@@ -257,7 +258,7 @@ docker-build docker-up docker-join docker-list docker-clean vcs a cd --help --ve
                 COMPREPLY=( $(compgen -W "$(_airlab_robot_names) --help" -- "$cur") )
                 return
             fi
-            COMPREPLY=( $(compgen -W "--help" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--address= --help" -- "$cur") )
             ;;
 
         ping)
@@ -265,7 +266,7 @@ docker-build docker-up docker-join docker-list docker-clean vcs a cd --help --ve
                 COMPREPLY=( $(compgen -W "$(_airlab_robot_names) --help" -- "$cur") )
                 return
             fi
-            COMPREPLY=( $(compgen -W "--help" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--address= --help" -- "$cur") )
             ;;
 
         sync)
@@ -278,7 +279,7 @@ docker-build docker-up docker-join docker-list docker-clean vcs a cd --help --ve
                 _airlab_complete_path_value
                 return
             fi
-            COMPREPLY=( $(compgen -W "--dry-run --delete --path= --exclude= --time --progress --password --help" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--dry-run --delete --path= --exclude= --time --progress --address= --password --help" -- "$cur") )
             ;;
 
         launch)
@@ -286,7 +287,7 @@ docker-build docker-up docker-join docker-list docker-clean vcs a cd --help --ve
                 COMPREPLY=( $(compgen -W "$(_airlab_targets) --help" -- "$cur") )
                 return
             fi
-            COMPREPLY=( $(compgen -W "--yaml_file= --stop --password --help" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--yaml_file= --stop --address= --password --help" -- "$cur") )
             ;;
 
         set_env)
@@ -296,7 +297,7 @@ docker-build docker-up docker-join docker-list docker-clean vcs a cd --help --ve
             fi
             # Position 4+: options after the ENV_VARIABLE argument
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=( $(compgen -W "--password --help -h" -- "$cur") )
+                COMPREPLY=( $(compgen -W "--address= --password --help -h" -- "$cur") )
             fi
             ;;
 
@@ -305,7 +306,7 @@ docker-build docker-up docker-join docker-list docker-clean vcs a cd --help --ve
                 COMPREPLY=( $(compgen -W "$(_airlab_targets) --help" -- "$cur") )
                 return
             fi
-            COMPREPLY=( $(compgen -W "--password --help" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--address= --password --help" -- "$cur") )
             ;;
 
         docker-build)

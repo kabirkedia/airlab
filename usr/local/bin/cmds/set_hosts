@@ -3,6 +3,9 @@
 # Exit on error, undefined variables, and pipe failures
 set -euo pipefail
 
+# Shared SSH-address resolution (--address via robots.yaml, robot.conf fallback)
+source "$(dirname "$0")/_lib/resolve.sh"
+
 # Color codes for output
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
@@ -30,6 +33,7 @@ Arguments:
                     /etc/hosts file via SSH.
 
 Options:
+    --address=<name> Use a named network address from robots.yaml (e.g. internet)
     --password      Skip key-based SSH and prompt for password directly
                     (remote targets only)
     --help          Show this help message
@@ -374,10 +378,18 @@ main() {
     shift
 
     local FORCE_PASSWORD=false
+    local ADDRESS=""
 
     # Parse additional flags
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --address)
+                ADDRESS="$2"
+                shift
+                ;;
+            --address=*)
+                ADDRESS="${1#--address=}"
+                ;;
             --password)
                 FORCE_PASSWORD=true
                 ;;
@@ -418,9 +430,9 @@ main() {
             # Treat as a robot name — look up SSH address
             set +e
             local ROBOT_SSH_ADDRESS
-            ROBOT_SSH_ADDRESS=$(grep "^${target}=" "$ROBOT_CONF" | cut -d= -f2)
+            ROBOT_SSH_ADDRESS=$(resolve_ssh_address "$target" "$ADDRESS")
             if [[ -z "$ROBOT_SSH_ADDRESS" ]]; then
-                log_error "Robot '$target' not found in $ROBOT_CONF"
+                log_error "Robot '$target'${ADDRESS:+ (address '$ADDRESS')} not found in robots.yaml or $ROBOT_CONF"
                 exit 1
             fi
             set -e

@@ -3,6 +3,9 @@
 # Exit on error, undefined variables, and pipe failures
 set -euo pipefail
 
+# Shared SSH-address resolution (supports --address via robots.yaml, robot.conf fallback)
+source "$(dirname "$0")/_lib/resolve.sh"
+
 # Color codes for output
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
@@ -121,23 +124,6 @@ ssh_authenticate() {
     fi
     log_info "SSH connection successful"
     return 0
-}
-
-# Resolve a system's SSH address. Prefers the target registry (robots.yaml via robots.py,
-# supporting named addresses like --address internet); falls back to robot.conf — the bare
-# name, or "<name>-<address>" for the legacy -internet convention.
-resolve_ssh_address() {
-    local name="$1" address="$2"
-    local robots_py="$AIRLAB_PATH/robot/robots.py"
-    local out
-    if [[ -f "$robots_py" ]]; then
-        if out=$(python3 "$robots_py" resolve "$name" ${address:+--address "$address"} 2>/dev/null) && [[ -n "$out" ]]; then
-            echo "$out"; return 0
-        fi
-    fi
-    local key="$name"
-    [[ -n "$address" ]] && key="${name}-${address}"
-    grep "^${key}=" "$ROBOT_CONF" 2>/dev/null | cut -d= -f2
 }
 
 main() {

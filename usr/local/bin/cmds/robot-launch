@@ -3,6 +3,9 @@
 # Exit on error, undefined variables, and pipe failures
 set -uo pipefail
 
+# Shared SSH-address resolution (--address via robots.yaml, robot.conf fallback)
+source "$(dirname "$0")/_lib/resolve.sh"
+
 # Color codes for output
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
@@ -26,6 +29,7 @@ show_usage() {
     echo "  --yaml_file=<file_name>   Yaml Launch file. Defaults to LAUNCH_FILE_PATH which points to the launch file in the robot's workspace."
     echo "  You can change the default launch file path by setting the LAUNCH_FILE_PATH environment variable using airlab set_env command."
     echo "  --stop                    Stop the tmux session instead of starting it"
+    echo "  --address=<name>          Use a named network address from robots.yaml (e.g. internet)"
     echo "  --password                Skip key-based SSH and prompt for password directly"
     echo "  --help                    Show this help message"
     echo
@@ -142,6 +146,7 @@ launch_remote(){
     local stop="${2:-false}" # Default to 'false' if not provided
     local yaml_file="${3:-}"  # Default to an empty string if not provided
     local force_password="${4:-false}" # Default to 'false' if not provided
+    local address="${5:-}"   # Optional named network address (robots.yaml)
 
     source ~/.bashrc
     ROBOT_CONF="$AIRLAB_PATH/robot/robot.conf"
@@ -151,10 +156,10 @@ launch_remote(){
         exit 1
     fi
 
-    # Load the target system's SSH address from robot.conf
-    ROBOT_SSH_ADDRESS=$(grep "^$SYSTEM_NAME=" "$ROBOT_CONF" | cut -d= -f2)
+    # Resolve the SSH address (registry-aware; robot.conf fallback)
+    ROBOT_SSH_ADDRESS=$(resolve_ssh_address "$SYSTEM_NAME" "$address")
     if [[ -z "$ROBOT_SSH_ADDRESS" ]]; then
-        log_error "System '$SYSTEM_NAME' not found in $ROBOT_CONF"
+        log_error "System '$SYSTEM_NAME'${address:+ (address '$address')} not found in robots.yaml or $ROBOT_CONF"
         exit 1
     fi
 
@@ -271,6 +276,7 @@ main() {
     local yaml_file=""
     local stop=false
     local force_password=false
+    local address=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --yaml_file=*)
@@ -278,6 +284,13 @@ main() {
                 ;;
             --stop)
                 stop=true
+                ;;
+            --address)
+                address="$2"
+                shift
+                ;;
+            --address=*)
+                address="${1#--address=}"
                 ;;
             --password)
                 force_password=true
@@ -311,9 +324,9 @@ main() {
         *)
             # Call launch_remote with yaml_file only if it's not empty
             if [[ -n "$yaml_file" ]]; then
-                launch_remote "$system" "$stop" "$yaml_file" "$force_password"
+                launch_remote "$system" "$stop" "$yaml_file" "$force_password" "$address"
             else
-                launch_remote "$system" "$stop" "" "$force_password"
+                launch_remote "$system" "$stop" "" "$force_password" "$address"
             fi
             ;;
     esac

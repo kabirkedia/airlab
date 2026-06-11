@@ -301,7 +301,9 @@ _airlab() {
                     fi
                     shift words
                     (( CURRENT-- ))
-                    _arguments -s '--help[show help]'
+                    _arguments -s \
+                        '--address=[network address from robots.yaml]:address:_airlab_complete_addresses' \
+                        '--help[show help]'
                     ;;
 
                 sync)
@@ -319,6 +321,7 @@ _airlab() {
                         '--exclude=[exclude pattern]:exclude:_airlab_complete_airlab_path' \
                         '--time[show timing]' \
                         '--progress[show progress]' \
+                        '--address=[network address from robots.yaml]:address:_airlab_complete_addresses' \
                         '--password[use password auth]' \
                         '--help[show help]'
                     ;;
@@ -334,6 +337,7 @@ _airlab() {
                     _arguments -s \
                         '--yaml_file=[YAML file]:yaml file:' \
                         '--stop[stop launch]' \
+                        '--address=[network address from robots.yaml]:address:_airlab_complete_addresses' \
                         '--password[use password auth]' \
                         '--help[show help]'
                     ;;
@@ -347,6 +351,7 @@ _airlab() {
                     shift words
                     (( CURRENT-- ))
                     _arguments -s \
+                        '--address=[network address from robots.yaml]:address:_airlab_complete_addresses' \
                         '--password[use password auth]' \
                         '--help[show help]' \
                         '-h[show help]'
@@ -361,6 +366,7 @@ _airlab() {
                     shift words
                     (( CURRENT-- ))
                     _arguments -s \
+                        '--address=[network address from robots.yaml]:address:_airlab_complete_addresses' \
                         '--password[use password auth]' \
                         '--help[show help]'
                     ;;
