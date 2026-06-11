@@ -23,11 +23,13 @@ show_usage() {
     echo "  <robot_name>              Name of the robot to ssh into (must be defined in robot.conf)"
     echo
     echo -e "${YELLOW}Options:${NC}"
+    echo "  --address <name>          Use a named network address from robots.yaml (e.g. internet, vpn)"
     echo "  --password                Skip key-based SSH and prompt for password directly"
     echo "  --help                    Show this help message"
     echo
     echo -e "${YELLOW}Examples:${NC}"
-    echo "  airlab ssh mt001                          # ssh into the robot"
+    echo "  airlab ssh mt001                          # ssh into the robot (default address)"
+    echo "  airlab ssh spot1-phys --address internet  # via the internet/port-forward address"
 } 
 
 
@@ -121,6 +123,23 @@ ssh_authenticate() {
     return 0
 }
 
+# Resolve a system's SSH address. Prefers the target registry (robots.yaml via robots.py,
+# supporting named addresses like --address internet); falls back to robot.conf — the bare
+# name, or "<name>-<address>" for the legacy -internet convention.
+resolve_ssh_address() {
+    local name="$1" address="$2"
+    local robots_py="$AIRLAB_PATH/robot/robots.py"
+    local out
+    if [[ -f "$robots_py" ]]; then
+        if out=$(python3 "$robots_py" resolve "$name" ${address:+--address "$address"} 2>/dev/null) && [[ -n "$out" ]]; then
+            echo "$out"; return 0
+        fi
+    fi
+    local key="$name"
+    [[ -n "$address" ]] && key="${name}-${address}"
+    grep "^${key}=" "$ROBOT_CONF" 2>/dev/null | cut -d= -f2
+}
+
 main() {
     # Check dependencies first
     check_dependencies
@@ -134,6 +153,7 @@ main() {
     # Get the robot name
     ROBOT_NAME="$1"
     FORCE_PASSWORD=false
+    ADDRESS=""
     shift
 
     # Parse additional flags
@@ -141,6 +161,10 @@ main() {
         case "$1" in
             --password)
                 FORCE_PASSWORD=true
+                ;;
+            --address)
+                ADDRESS="$2"
+                shift
                 ;;
             *)
                 log_error "Invalid option: $1"
@@ -159,10 +183,11 @@ main() {
     fi
 
     set +e
-    # Load the robot's SSH address from robot.conf
-    ROBOT_SSH_ADDRESS=$(grep "^$ROBOT_NAME=" "$ROBOT_CONF" | cut -d= -f2)
+    # Resolve the SSH address: prefer the target registry (robots.yaml via robots.py,
+    # which supports named --address); fall back to robot.conf for compatibility.
+    ROBOT_SSH_ADDRESS=$(resolve_ssh_address "$ROBOT_NAME" "$ADDRESS")
     if [[ -z "$ROBOT_SSH_ADDRESS" ]]; then
-        log_error "Robot '$ROBOT_NAME' not found in $ROBOT_CONF"
+        log_error "Robot '$ROBOT_NAME'${ADDRESS:+ (address '$ADDRESS')} not found in robots.yaml or $ROBOT_CONF"
         exit 1
     fi
 
