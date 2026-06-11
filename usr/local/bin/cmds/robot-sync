@@ -310,14 +310,14 @@ main() {
         fi
     fi
 
-    # Extract the port if specified in the SSH address
-    # Check if ROBOT_SSH_ADDRESS contains a port
-    if [[ "$ROBOT_SSH_ADDRESS" == *:* ]]; then
-        PORT=${ROBOT_SSH_ADDRESS##*:}
-        EXTRACTED=$(echo "$ROBOT_SSH_ADDRESS" | awk -F':' '{print $2}')
-        CLEANED=${EXTRACTED#//}
-        ROBOT_SSH_ADDRESS=$CLEANED
-        log_info "Syncing to machine $ROBOT_SSH_ADDRESS with port $PORT"
+    # Derive the rsync host (user@host) + SSH port from the resolved address, which may be
+    # "user@host", "user@host:port", or "ssh://user@host:port". Keep ROBOT_SSH_ADDRESS in its
+    # ssh-usable form (ssh accepts the ssh:// URI) for the standalone ssh calls below; rsync
+    # needs the bare user@host plus an explicit -p port.
+    RSYNC_HOST="${ROBOT_SSH_ADDRESS#ssh://}"
+    if [[ "$RSYNC_HOST" == *:* ]]; then
+        PORT="${RSYNC_HOST##*:}"
+        RSYNC_HOST="${RSYNC_HOST%:*}"
     else
         PORT=22
     fi
@@ -364,7 +364,7 @@ main() {
     fi
 
     # Perform the sync
-    log_info "Syncing from $LOCAL_WS_PATH to $ROBOT_SSH_ADDRESS:$REMOTE_WS_PATH"
+    log_info "Syncing from $LOCAL_WS_PATH to $RSYNC_HOST:$REMOTE_WS_PATH (port $PORT)"
 
     if [[ "$SYNC_PATH" != "" ]]; then
         LOCAL_WS_PATH="$LOCAL_WS_PATH/$SYNC_PATH"
@@ -388,7 +388,7 @@ main() {
     if ! "${SSHPASS_PREFIX[@]}" \
         rsync "${RSYNC_OPTS[@]}"\
         "$LOCAL_WS_PATH/" \
-        "$ROBOT_SSH_ADDRESS:$REMOTE_WS_PATH/"; then
+        "$RSYNC_HOST:$REMOTE_WS_PATH/"; then
         log_error "Sync failed"
         exit 1
     fi
