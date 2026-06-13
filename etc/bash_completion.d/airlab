@@ -215,7 +215,7 @@ _airlab_completions() {
     fi
 
     # Top-level commands
-    local commands="greet setup ssh auth ping sync launch set_env set_hosts \
+    local commands="greet setup ssh exec auth ping sync launch set_env set_hosts \
 docker-build docker-up docker-join docker-list docker-clean vcs a cd --help --version"
 
     # Position 1: complete the sub-command
@@ -251,6 +251,20 @@ docker-build docker-up docker-join docker-list docker-clean vcs a cd --help --ve
                 return
             fi
             COMPREPLY=( $(compgen -W "--address= --password --help" -- "$cur") )
+            ;;
+
+        exec)
+            # Position 2: target robot/system name
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "$(_airlab_robot_names) --help" -- "$cur") )
+                return
+            fi
+            # After -c/--cli the rest is a free-form remote command — nothing to complete.
+            local i
+            for (( i=2; i < cword; i++ )); do
+                [[ "${words[i]}" == "-c" || "${words[i]}" == "--cli" ]] && return
+            done
+            COMPREPLY=( $(compgen -W "--address= --cli -c --help" -- "$cur") )
             ;;
 
         auth)
