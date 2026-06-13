@@ -22,6 +22,7 @@ function show_usage() {
     echo "  a                             Run a user-defined alias command (see 'airlab a --help')."
     echo "  ping                          Ping a remote robot."
     echo "  ssh                           Connect to a remote machine using SSH."
+    echo "  exec                          Run a single command on a remote machine (remote-side expansion)."
     echo "  auth                          Install SSH public key on a remote robot for password-less access."
     echo "  set_env                       Set environment variables on local or remote machine."
     echo "  set_hosts                     Set hostnames for robots or local environment."
@@ -96,6 +97,10 @@ case "$COMMAND" in
     ssh)
         # ssh into a robot
         /usr/local/bin/cmds/ssh "$@"
+        ;;
+    exec)
+        # run a single command on a remote target (remote-side expansion; streams output + exit code)
+        /usr/local/bin/cmds/exec "$@"
         ;;
     auth)
         # Install SSH public key on a remote robot
