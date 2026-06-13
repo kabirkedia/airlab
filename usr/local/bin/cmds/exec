@@ -1,0 +1,71 @@
+#!/bin/bash
+# exec — run a SINGLE command on a remote target over SSH, with REMOTE-side expansion.
+#
+# Everything after -c/--cli is the command. It is sent verbatim to the remote shell, so $VARS,
+# globs, pipes and redirects are evaluated ON THE REMOTE host — single-quote it locally so your
+# shell doesn't expand it first. stdout/stderr stream back and the remote exit code is returned.
+# This gives humans and the Broker one uniform way to run a command on a remote; airlab/robots.yaml
+# own the address resolution (LAN vs vpn vs internet) via --address.
+#
+#   airlab exec <target> [--address <name>] (-c|--cli) '<command>'
+#   airlab exec g-phys --address vpn -c 'cd ${HOME} && ls -al | grep .tmux.conf'
+#
+# Key-based auth only (set it up once with `airlab auth <target>`); no password prompt, so it is safe
+# for non-interactive callers like the Broker. Requires AIRLAB_PATH (for robots.yaml resolution).
+set -euo pipefail
+
+source "$(dirname "$0")/_lib/resolve.sh"   # resolve_ssh_address <system> [address] -> user@host | ssh://user@host:port
+
+readonly RED='\033[0;31m' YELLOW='\033[1;33m' NC='\033[0m'
+log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
+
+show_usage() {
+    echo -e "${YELLOW}Usage:${NC}"
+    echo "  airlab exec <target> [--address <name>] (-c|--cli) '<command>'"
+    echo
+    echo "Runs ONE command on <target> over SSH. Everything after -c/--cli is the command and is"
+    echo "evaluated by the REMOTE shell — single-quote it so \$VARS / globs / pipes expand on the"
+    echo "remote, not locally. stdout/stderr stream back; the remote exit code is propagated."
+    echo
+    echo -e "${YELLOW}Options:${NC}"
+    echo "  --address <name>   named network address from robots.yaml (e.g. vpn, internet, default)"
+    echo "  -c, --cli          the command to run (must be last; quote it for remote expansion)"
+    echo
+    echo -e "${YELLOW}Example:${NC}"
+    echo "  airlab exec g-phys --address vpn -c 'cd \${HOME} && ls -al | grep .tmux.conf'"
+}
+
+main() {
+    if [[ $# -eq 0 || "$1" == "--help" || "$1" == "-h" ]]; then show_usage; exit 0; fi
+
+    local TARGET="$1"; shift
+    local ADDRESS="" CLI="" got_cli=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --address)   ADDRESS="${2:-}"; shift 2;;
+            --address=*) ADDRESS="${1#--address=}"; shift;;
+            -c|--cli)    shift; CLI="$*"; got_cli=1; break;;   # the rest (verbatim) is the remote command
+            --help|-h)   show_usage; exit 0;;
+            *)           log_error "Invalid option: $1"; show_usage; exit 1;;
+        esac
+    done
+
+    if [[ $got_cli -eq 0 || -z "${CLI//[[:space:]]/}" ]]; then
+        log_error "no command — pass it after -c/--cli, e.g.  -c 'uname -a'"; show_usage; exit 1
+    fi
+    : "${AIRLAB_PATH:?AIRLAB_PATH not set (source \$AIRLAB_PATH/airlab.env first)}"
+
+    local ADDR
+    ADDR="$(resolve_ssh_address "$TARGET" "$ADDRESS")"
+    if [[ -z "$ADDR" ]]; then
+        log_error "target '$TARGET'${ADDRESS:+ (address '$ADDRESS')} not found in robots.yaml / robot.conf"
+        exit 1
+    fi
+
+    # Non-interactive, key-only (fails fast if no key — never hangs on a prompt); short connect timeout.
+    # "$CLI" reaches the remote as a single argument, so the REMOTE shell does the expansion. `exec` so the
+    # remote command's exit status becomes ours, and stdout/stderr stream straight through.
+    exec ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 "$ADDR" "$CLI"
+}
+
+main "$@"

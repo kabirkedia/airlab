@@ -228,6 +228,7 @@ _airlab() {
         'greet:Say hello and confirm the command is set up correctly'
         'setup:Set up the airlab environment'
         'ssh:Connect to a remote machine using SSH'
+        'exec:Run a single command on a remote machine (remote-side expansion)'
         'auth:Install SSH public key on a remote robot'
         'ping:Ping a remote robot'
         'sync:Synchronize code to a remote machine'
@@ -291,6 +292,20 @@ _airlab() {
                     _arguments -s \
                         '--address=[network address from robots.yaml]:address:_airlab_complete_addresses' \
                         '--password[use password auth]' \
+                        '--help[show help]'
+                    ;;
+
+                exec)
+                    if (( CURRENT == 2 )); then
+                        _airlab_complete_robots
+                        compadd -- --help
+                        return
+                    fi
+                    shift words
+                    (( CURRENT-- ))
+                    _arguments -s \
+                        '--address=[network address from robots.yaml]:address:_airlab_complete_addresses' \
+                        '(-c --cli)'{-c,--cli}'[command to run on the remote (quote for remote-side expansion)]:command:' \
                         '--help[show help]'
                     ;;
 
