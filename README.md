@@ -19,6 +19,7 @@
     *   [Launch](#launch)
     *   [Docker Commands](#docker-commands)
     *   [Version Control Commands](#vcs-commands)
+    *   [Alias Commands (`airlab a`)](#alias-commands)
     *   [cd](#cd)
 *   [Workspace Structure](#workspace-structure)
     *   [Overview](#overview-1)
@@ -36,6 +37,7 @@
 *   **Launch Management:** Simplifies the process of launching and managing robotic system launch files, especially using `tmux` sessions.
 *   **Environment Setup:** Automates the configuration of necessary environments on remote systems.
 *   **Multi-Repository Workflows:** Beyond `vcstool`'s init/pull/push/status, the `vcs` family also supports cross-workspace **drift detection** (`airlab vcs check`), **recursive tagging with deduplicated push** (`airlab vcs tag`), and **recursive branch / tag checkout with a colored post-state summary** (`airlab vcs checkout`), which are essential when the same source repository is cloned across many sub-workspaces.
+*   **User-Defined Aliases:** `airlab a <name>` runs custom verbs — plain `.sh` / `.py` scripts under `$AIRLAB_ALIAS_PATH` — with auto-completion, a discovery list, and a lintable authoring contract. Ideal for wrapping a complex `ansible-playbook` (or any procedure) into one short, shareable command.
 *   **Unified Interface:** Consolidates various tools and processes into a single command-line utility.
 *   **Debian Package:**  Offers a simple and reliable installation and update mechanism via a Debian package.
 
@@ -904,6 +906,56 @@ airlab cd version_control   # cd to $AIRLAB_PATH/version_control
 #### Tab Completion
 
 `airlab cd <TAB>` lists directories under `$AIRLAB_PATH`, and supports nested path completion (e.g., `airlab cd docker/<TAB>`).
+
+---
+
+<a id="alias-commands"></a>
+### Alias Commands (`airlab a`)
+
+Run user-defined commands ("verbs") that you author as plain scripts — perfect for wrapping a long `ansible-playbook` invocation, a multi-step recovery, or any procedure into one short, tab-completable, shareable command.
+
+An alias is a `.sh` or `.py` file under one of the colon-separated directories in **`$AIRLAB_ALIAS_PATH`** (default: `$AIRLAB_PATH/alias`). The command name is the file path relative to its alias dir, with the extension dropped and folders kept as a slash-nested hierarchy:
+
+```
+$AIRLAB_ALIAS_PATH/fleet/build.sh   →   airlab a fleet/build
+```
+
+#### Usage
+
+```bash
+airlab a                       # list all aliases (name, @desc, @author)
+airlab a fleet/build           # run the fleet/build alias
+airlab a fleet/build --help    # show that alias's own help
+airlab a --new fleet/deploy    # scaffold a new bash alias (--py for Python)
+airlab a --lint                # lint all aliases (used by CI)
+```
+
+#### How aliases run
+
+*   On the **local machine**, in your **current directory**, with `airlab.env` and the airlab venv already active — so an alias can call other `airlab` verbs and read `$AIRLAB_PATH`.
+*   Exit code is passed through. **All arguments after the alias name are forwarded to the alias** (it parses its own flags, including `--help`) — e.g. `airlab a fleet/sync spirit-nx3 --cleanup`.
+*   These variables are exported for the alias: `AIRLAB_ALIAS_SELF` (its path), `AIRLAB_ALIAS_DIR` (its folder — handy for finding a file bundled beside it), `AIRLAB_ALIAS_NAME`.
+
+#### Authoring contract
+
+Every alias must declare two header comments and handle `--help`:
+
+```bash
+# @desc: build all workspaces on this host   # one-line description (shown by 'airlab a')
+# @author: Your Name <handle>                # owner — assign PRs to them when tweaking
+```
+
+`airlab a --new <name>` scaffolds a compliant file from the bundled template. `airlab a --lint [PATH...]` checks that every alias has `@desc`, `@author`, and a `--help` handler — wire it into CI in the repo that hosts your alias directory.
+
+#### Resolution & collisions
+
+`$AIRLAB_ALIAS_PATH` is searched left-to-right; the first directory that owns a name wins. Within that directory, a name that resolves to both `.sh` and `.py`, or to both a file and a sub-directory, is a **collision** — `airlab a` reports it and refuses to run until you disambiguate.
+
+#### Tab Completion
+
+`airlab a <TAB>` lists alias names (sub-groups shown with a trailing `/`, leaf aliases with the extension stripped) and supports nested completion (e.g. `airlab a fleet/<TAB>`).
+
+See [`usr/local/bin/docs/alias-commands.md`](usr/local/bin/docs/alias-commands.md) for the full reference.
 
 ---
 

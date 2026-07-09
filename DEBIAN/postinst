@@ -13,4 +13,13 @@ if [ -f /etc/airlab/airlab.zsh ]; then
     chmod 644 /etc/airlab/airlab.zsh
 fi
 
+# Robot state signals (see /etc/airlab/signals/README.md): world-readable folder of root-owned marker
+# files the Broker/driver check (MOTIONLESS, MOTION_ENABLED). Ensure the folder exists and is readable;
+# seed the safe default (MOTIONLESS) ONLY on a fresh setup — never clobber an operator's runtime state.
+install -d -m 0755 /etc/airlab/signals
+[ -f /etc/airlab/signals/README.md ] && chmod 0644 /etc/airlab/signals/README.md
+if [ ! -e /etc/airlab/signals/MOTIONLESS ] && [ ! -e /etc/airlab/signals/MOTION_ENABLED ]; then
+    : > /etc/airlab/signals/MOTIONLESS && chmod 0644 /etc/airlab/signals/MOTIONLESS
+fi
+
 echo "Succesfully setup AIRLAB on your system!✅"

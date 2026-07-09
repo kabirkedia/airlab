@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Shared SSH-address resolution (--address via robots.yaml, robot.conf fallback)
+source "$(dirname "$0")/_lib/resolve.sh"
+
 # Color codes for output
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
@@ -22,6 +25,7 @@ Arguments:
     ENV_VARIABLE  Environment variable to set along with the value
 
 Options:
+    --address=<name>  Use a named network address from robots.yaml (e.g. internet)
     --password   Skip key-based SSH and prompt for password directly
     -h, --help   Show this help message
 
@@ -197,6 +201,7 @@ set_env_remote() {
     local SYSTEM_NAME="$1"
     local ENV_VARIABLE="$2"
     local FORCE_PASSWORD="${3:-false}"
+    local ADDRESS="${4:-}"
 
     source ~/.bashrc
 
@@ -206,10 +211,10 @@ set_env_remote() {
         exit 1
     fi
 
-    # Load the target system's SSH address from robot.conf
-    ROBOT_SSH_ADDRESS=$(grep "^$SYSTEM_NAME=" "$ROBOT_CONF" | cut -d= -f2)
+    # Resolve the SSH address (registry-aware; robot.conf fallback)
+    ROBOT_SSH_ADDRESS=$(resolve_ssh_address "$SYSTEM_NAME" "$ADDRESS")
     if [[ -z "$ROBOT_SSH_ADDRESS" ]]; then
-        log_error "System '$SYSTEM_NAME' not found in $ROBOT_CONF"
+        log_error "System '$SYSTEM_NAME'${ADDRESS:+ (address '$ADDRESS')} not found in robots.yaml or $ROBOT_CONF"
         exit 1
     fi
 
@@ -282,8 +287,16 @@ main() {
     shift
 
     local FORCE_PASSWORD=false
+    local ADDRESS=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --address)
+                ADDRESS="$2"
+                shift
+                ;;
+            --address=*)
+                ADDRESS="${1#--address=}"
+                ;;
             --password)
                 FORCE_PASSWORD=true
                 ;;
@@ -304,7 +317,7 @@ main() {
             show_usage
             ;;
         *)
-            set_env_remote "$ROBOT_NAME" "$ENV_VARIABLE" "$FORCE_PASSWORD"
+            set_env_remote "$ROBOT_NAME" "$ENV_VARIABLE" "$FORCE_PASSWORD" "$ADDRESS"
             ;;
     esac
 

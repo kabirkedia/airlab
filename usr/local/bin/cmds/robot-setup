@@ -6,6 +6,9 @@ USER_HOME=$(getent passwd $SUDO_USER | cut -d: -f6)
 readonly ENV_FILE="/etc/airlab/airlab.env"
 readonly DEFAULT_AIRLAB_PATH="$USER_HOME/airlab_ws"
 
+# Shared SSH-address resolution (--address via robots.yaml, robot.conf fallback)
+source "$(dirname "$0")/_lib/resolve.sh"
+
 # Color codes for output
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
@@ -28,6 +31,7 @@ show_usage() {
     echo
     echo -e "${YELLOW}Options:${NC}"
     echo "  --path=<path>           Custom installation path (default: $DEFAULT_AIRLAB_PATH)"
+    echo "  --address=<name>        Use a named network address from robots.yaml (e.g. internet, vpn)"
     echo "  --force                 Force overwrite without prompting (use with caution)"
     echo "  --password              Skip key-based SSH and prompt for password directly"
     echo
@@ -55,11 +59,15 @@ parse_args() {
     local path="$DEFAULT_AIRLAB_PATH"
     local force=false
     local password=false
+    local address=""
 
     for arg in "${args[@]}"; do
         case "$arg" in
             --path=*)
                 path="${arg#--path=}"
+                ;;
+            --address=*)
+                address="${arg#--address=}"
                 ;;
             --force)
                 force=true
@@ -76,7 +84,7 @@ parse_args() {
         esac
     done
 
-    echo "$path $force $password"
+    echo "$path $force $password $address"
 }
 
 # Environment management functions
@@ -101,14 +109,26 @@ save_env() {
 
 setup_bashrc() {
     local env_path="$1"
-    local bashrc="$USER_HOME/.bashrc"
     local env_source="set -o allexport; source $env_path/airlab.env; set +o allexport"
 
-    if ! grep -q "source $env_path/airlab.env" "$bashrc"; then
+    # .bashrc (always)
+    local bashrc="$USER_HOME/.bashrc"
+    if ! grep -q "source $env_path/airlab.env" "$bashrc" 2>/dev/null; then
         echo "$env_source" >> "$bashrc" || error_exit "Failed to update .bashrc"
         log_info "Updated .bashrc with environment configuration"
     else
         log_info ".bashrc already configured"
+    fi
+
+    # .zshrc (zsh users: a default-zsh login shell, or an existing .zshrc)
+    local login_shell zshrc="$USER_HOME/.zshrc"
+    login_shell=$(getent passwd "${SUDO_USER:-$USER}" 2>/dev/null | cut -d: -f7)
+    if command -v zsh >/dev/null 2>&1 && { [ -f "$zshrc" ] || [ "$(basename "${login_shell:-}")" = "zsh" ]; }; then
+        touch "$zshrc"
+        if ! grep -q "source $env_path/airlab.env" "$zshrc" 2>/dev/null; then
+            echo "$env_source" >> "$zshrc"
+            log_info "Updated .zshrc with environment configuration"
+        fi
     fi
 }
 
@@ -292,7 +312,7 @@ ssh_authenticate() {
 
     if [[ "$force_password" == false ]]; then
         log_info "Attempting key-based SSH to $ssh_address..."
-        if ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no -o BatchMode=yes "$ssh_address" exit 2>/dev/null; then
+        if ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no -o BatchMode=yes -p "${SSH_PORT:-22}" "$ssh_address" exit 2>/dev/null; then
             log_info "Key-based SSH connection successful"
             return 0
         fi
@@ -310,7 +330,7 @@ ssh_authenticate() {
     [[ -z "$robot_password" ]] && log_error "Password cannot be empty" && return 1
     echo
 
-    if ! sshpass -p "$robot_password" ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "$ssh_address" exit; then
+    if ! sshpass -p "$robot_password" ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no -p "${SSH_PORT:-22}" "$ssh_address" exit; then
         log_error "Cannot connect to remote system '$ssh_address'"
         return 1
     fi
@@ -330,7 +350,7 @@ remote_exec() {
         sshpass_prefix=(sshpass -p "$password")
     fi
 
-    if ! "${sshpass_prefix[@]}" ssh -o StrictHostKeyChecking=no "$host" "$cmd"; then
+    if ! "${sshpass_prefix[@]}" ssh -o StrictHostKeyChecking=no -p "${SSH_PORT:-22}" "$host" "$cmd"; then
         if [ "$warn" = "warn" ]; then
             error_warn "Failed to execute (proceeding): $cmd on $host"
         else
@@ -349,7 +369,7 @@ remote_copy() {
         sshpass_prefix=(sshpass -p "$password")
     fi
 
-    "${sshpass_prefix[@]}" scp "$src" "$dest" || error_exit "Failed to copy: $src to $dest"
+    "${sshpass_prefix[@]}" scp -P "${SSH_PORT:-22}" "$src" "$dest" || error_exit "Failed to copy: $src to $dest"
 }
 
 read_remote_variable() {
@@ -402,6 +422,7 @@ setup_remote() {
     local airlab_path="$2"
     local force="$3"
     local force_password="${4:-false}"
+    local address="${5:-}"
 
     # Validate robot configuration
     source $USER_HOME/.bashrc
@@ -409,10 +430,17 @@ setup_remote() {
     local robots_conf="$remote_path/robot/robot.conf"
     [[ ! -f "$robots_conf" ]] && error_exit "Robot configuration not found: $robots_conf"
 
-    # Get robot SSH address
+    # Resolve robot SSH address (registry-aware; robot.conf fallback), then split into a bare
+    # user@host + SSH_PORT so every ssh/scp/rsync below honors a port-bearing
+    # (ssh://user@host:port) address. SSH_PORT is global so the helpers below see it.
     local robot_ssh_address
-    robot_ssh_address=$(grep "^$robot_name=" "$robots_conf" | cut -d= -f2)
-    [[ -z "$robot_ssh_address" ]] && error_exit "Robot '$robot_name' not found in configuration"
+    robot_ssh_address=$(resolve_ssh_address "$robot_name" "$address")
+    [[ -z "$robot_ssh_address" ]] && error_exit "Robot '$robot_name'${address:+ (address '$address')} not found in robots.yaml or $robots_conf"
+    SSH_PORT=22
+    robot_ssh_address="${robot_ssh_address#ssh://}"
+    if [[ "$robot_ssh_address" == *:* ]]; then
+        SSH_PORT="${robot_ssh_address##*:}"; robot_ssh_address="${robot_ssh_address%:*}"
+    fi
 
     # Authenticate via SSH (robot_password is set by ssh_authenticate)
     robot_password=""
@@ -427,12 +455,12 @@ setup_remote() {
 
     # Check existing installation
     log_info "Checking existing installation..."
-    remote_home_dir=$("${SSHPASS_PREFIX[@]}" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "echo \$HOME" | sed 's/^HOME=//')
+    remote_home_dir=$("${SSHPASS_PREFIX[@]}" ssh -o StrictHostKeyChecking=no -p "${SSH_PORT:-22}" "$robot_ssh_address" "echo \$HOME" | sed 's/^HOME=//')
     airlab_path=$(echo "$airlab_path" | sed "s|^~|$remote_home_dir|")
 
     log_info "Checking for workspace setup at $airlab_path"
 
-    if "${SSHPASS_PREFIX[@]}" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "[ -d '$airlab_path' ]"; then
+    if "${SSHPASS_PREFIX[@]}" ssh -o StrictHostKeyChecking=no -p "${SSH_PORT:-22}" "$robot_ssh_address" "[ -d '$airlab_path' ]"; then
         log_warn "Directory exists."
         if [ "$force" = true ]; then
             log_warn "Force flag set. Overwriting existing installation..."
@@ -506,7 +534,7 @@ setup_remote() {
 
     # Copy files
     log_info "Copying configuration files to robot..."
-    "${SSHPASS_PREFIX[@]}" rsync -avz --exclude='.git' \
+    "${SSHPASS_PREFIX[@]}" rsync -avz -e "ssh -o StrictHostKeyChecking=no -p ${SSH_PORT:-22}" --exclude='.git' \
         "$clone_dir/airlab_ws/" "$robot_ssh_address:$airlab_path/" || error_exit "Failed to copy files"
 
     # Resolve install source — recorded at .deb-build time so each fork's
@@ -516,7 +544,7 @@ setup_remote() {
     source_url="https://github.com/${source_repo}/archive/refs/heads/main.zip"
 
     # Install package if needed
-    if ! "${SSHPASS_PREFIX[@]}" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "dpkg -l | grep -q '^ii.*airlab'" ; then
+    if ! "${SSHPASS_PREFIX[@]}" ssh -o StrictHostKeyChecking=no -p "${SSH_PORT:-22}" "$robot_ssh_address" "dpkg -l | grep -q '^ii.*airlab'" ; then
         log_info "Installing airlab package..."
         sudo curl -L -o /tmp/airlab.zip "$source_url"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S rm -rf /tmp/airlab-main /tmp/airlab-main.deb /tmp/airlab.zip" "$robot_password"
@@ -524,7 +552,7 @@ setup_remote() {
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S unzip -o /tmp/airlab.zip -d /tmp/" "$robot_password"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S chmod a+x -R /tmp/airlab-main" "$robot_password"
         # ssh -tt: pty makes sudo's timestamp cache survive into install.sh's internal sudo calls. install.sh must run as user (not root) so its ~/VENVs and ~/.bashrc edits use the right $HOME.
-        "${SSHPASS_PREFIX[@]}" ssh -tt -o StrictHostKeyChecking=no "$robot_ssh_address" "echo '$robot_password' | sudo -S echo HERE && bash /tmp/airlab-main/install.sh" \
+        "${SSHPASS_PREFIX[@]}" ssh -tt -o StrictHostKeyChecking=no -p "${SSH_PORT:-22}" "$robot_ssh_address" "echo '$robot_password' | sudo -S echo HERE && bash /tmp/airlab-main/install.sh" \
             || error_exit "Failed to run install.sh on $robot_ssh_address"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg-deb --build /tmp/airlab-main" "$robot_password"
         remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg -i /tmp/airlab-main.deb" "$robot_password" "warn"
@@ -542,7 +570,7 @@ setup_remote() {
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S unzip -o /tmp/airlab.zip -d /tmp/" "$robot_password"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S chmod a+x -R /tmp/airlab-main" "$robot_password"
             # ssh -tt: pty makes sudo's timestamp cache survive into install.sh's internal sudo calls. install.sh must run as user (not root) so its ~/VENVs and ~/.bashrc edits use the right $HOME.
-            "${SSHPASS_PREFIX[@]}" ssh -tt -o StrictHostKeyChecking=no "$robot_ssh_address" "echo '$robot_password' | sudo -S echo HERE && bash /tmp/airlab-main/install.sh" \
+            "${SSHPASS_PREFIX[@]}" ssh -tt -o StrictHostKeyChecking=no -p "${SSH_PORT:-22}" "$robot_ssh_address" "echo '$robot_password' | sudo -S echo HERE && bash /tmp/airlab-main/install.sh" \
                 || error_exit "Failed to run install.sh on $robot_ssh_address"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg-deb --build /tmp/airlab-main" "$robot_password"
             remote_exec "$robot_ssh_address" "echo '$robot_password' | sudo -S dpkg -i /tmp/airlab-main.deb" "$robot_password" "warn"
@@ -650,6 +678,8 @@ EOF
     remote_exec "$robot_ssh_address" "sed -i '/source .*airlab.env/d' ~/.bashrc" "$robot_password"
     remote_exec "$robot_ssh_address" "grep -q 'source $airlab_path/airlab.env' ~/.bashrc || \
         echo 'set -o allexport; source $airlab_path/airlab.env; set +o allexport' >> ~/.bashrc" "$robot_password"
+    # Update remote .zshrc for zsh users (default-zsh target, or an existing .zshrc)
+    remote_exec "$robot_ssh_address" "if command -v zsh >/dev/null 2>&1 && { [ -f ~/.zshrc ] || [ \"\$(basename \${SHELL:-})\" = zsh ]; }; then touch ~/.zshrc; sed -i '/source .*airlab.env/d' ~/.zshrc; grep -q 'source $airlab_path/airlab.env' ~/.zshrc || echo 'set -o allexport; source $airlab_path/airlab.env; set +o allexport' >> ~/.zshrc; fi" "$robot_password"
 
     cat << EOF
 Installation details:
@@ -657,14 +687,14 @@ Installation details:
   - Path: $airlab_path
   - System: $robot_name
   
-Note: Run 'source ~/.bashrc' on the remote system to apply changes
+Note: Run 'source ~/.bashrc' (or ~/.zshrc) on the remote system to apply changes
 EOF
     log_info "✅ Remote setup completed successfully!"
 
     log_info "It is recommended to reboot the remote system"
     read -p "Restart the system (y/n)" confirm
     if [[ "$confirm" == [yY] ]]; then
-        "${SSHPASS_PREFIX[@]}" ssh -o StrictHostKeyChecking=no "$robot_ssh_address" "echo '$robot_password' | sudo -S reboot" 
+        "${SSHPASS_PREFIX[@]}" ssh -o StrictHostKeyChecking=no -p "${SSH_PORT:-22}" "$robot_ssh_address" "echo '$robot_password' | sudo -S reboot" 
     else
         log_info "Skipping"
         log_info "Please reboot the system manually"
@@ -681,7 +711,7 @@ main() {
     local command="$1"
     shift
 
-    read -r AIRLAB_PATH FORCE FORCE_PASSWORD <<< "$(parse_args "$@")"
+    read -r AIRLAB_PATH FORCE FORCE_PASSWORD ADDRESS <<< "$(parse_args "$@")"
 
     case "$command" in
         local)
@@ -691,7 +721,7 @@ main() {
             show_usage
             ;;
         *)
-            setup_remote "$command" "~/airlab_ws" "$FORCE" "$FORCE_PASSWORD"
+            setup_remote "$command" "~/airlab_ws" "$FORCE" "$FORCE_PASSWORD" "$ADDRESS"
             ;;
     esac
 }

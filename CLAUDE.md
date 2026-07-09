@@ -10,6 +10,8 @@
 usr/local/bin/
   airlab                          # Main entrypoint (case dispatcher)
   cmds/
+    alias                         # Run user-defined alias scripts ("airlab a"); resolves
+                                  #   $AIRLAB_ALIAS_PATH, lists/lints/scaffolds aliases
     ssh                           # SSH into a robot
     ping                          # Ping a robot
     auth                          # Install SSH public key on a robot
@@ -30,6 +32,8 @@ usr/local/bin/
       update                      # Pull + init missing + pull again with summary
 usr/share/zsh/vendor-completions/
   _airlab                         # Zsh completion function (auto-discovered via fpath)
+usr/share/airlab/alias-templates/
+  alias.sh, alias.py              # Templates for "airlab a --new" (with @desc/@author/--help)
 etc/airlab/                       # Default config templates (copied to workspace on setup)
   airlab.zsh                      # Zsh shell function wrapper (sourced from ~/.zshrc)
   robot/robot.conf                # Robot SSH address mappings (name=user@host)

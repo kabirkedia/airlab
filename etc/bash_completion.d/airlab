@@ -32,13 +32,25 @@ airlab() {
     fi
 }
 
-# Helper: read robot names from robot.conf
+# Helper: read robot/system names from robot.conf AND the target registry (robots.yaml).
 _airlab_robot_names() {
     local conf="${AIRLAB_PATH:-}/robot/robot.conf"
-    if [[ -f "$conf" ]]; then
-        # Extract robot names (lines like "name=user@host", ignoring comments/blanks)
-        sed -n 's/^\([A-Za-z0-9_-]\+\)=.*/\1/p' "$conf" 2>/dev/null
-    fi
+    local robots_py="${AIRLAB_PATH:-}/robot/robots.py"
+    {
+        if [[ -f "$conf" ]]; then
+            # Extract robot names (lines like "name=user@host", ignoring comments/blanks)
+            sed -n 's/^\([A-Za-z0-9_-]\+\)=.*/\1/p' "$conf" 2>/dev/null
+        fi
+        [[ -f "$robots_py" ]] && python3 "$robots_py" list 2>/dev/null
+    } | sort -u
+}
+
+# Helper: list a system's network address names from robots.yaml (for `ssh --address=`).
+_airlab_address_names() {
+    local system="$1"
+    local robots_py="${AIRLAB_PATH:-}/robot/robots.py"
+    [[ -n "$system" && -f "$robots_py" ]] || return
+    python3 "$robots_py" addresses "$system" 2>/dev/null
 }
 
 # Helper: generate robot names plus "local"
@@ -127,6 +139,39 @@ _airlab_complete_repo_file_value() {
     compopt -o nospace
 }
 
+# Helper: complete alias names under $AIRLAB_ALIAS_PATH for "airlab a".
+# Walks every colon-separated entry; offers sub-dirs (trailing /) and .sh/.py
+# leaves with the extension stripped. cur is the partial alias path typed.
+_airlab_complete_alias() {
+    local raw="${AIRLAB_ALIAS_PATH:-${AIRLAB_PATH:-}/alias}"
+    local -a bases
+    IFS=':' read -r -a bases <<< "$raw"
+
+    local typed="$cur"
+    local base search_dir entry rel
+    for base in "${bases[@]}"; do
+        [[ -d "$base" ]] || continue
+        search_dir="$base"
+        if [[ "$typed" == */* ]]; then
+            search_dir="$base/${typed%/*}"
+        fi
+        [[ -d "$search_dir" ]] || continue
+        while IFS= read -r -d '' entry; do
+            rel="${entry#"$base"/}"
+            if [[ -d "$entry" ]]; then
+                [[ "$rel" == "$typed"* ]] || continue
+                COMPREPLY+=( "${rel}/" )
+            elif [[ "$entry" == *.sh || "$entry" == *.py ]]; then
+                rel="${rel%.*}"
+                [[ "$rel" == "$typed"* ]] || continue
+                COMPREPLY+=( "$rel" )
+            fi
+        done < <(find "$search_dir" -mindepth 1 -maxdepth 1 -print0 2>/dev/null | sort -z)
+    done
+
+    compopt -o nospace
+}
+
 # Helper: complete directories under $AIRLAB_PATH for "airlab cd".
 # Works like system cd — only shows directories, supports nested paths.
 _airlab_complete_cd() {
@@ -170,8 +215,8 @@ _airlab_completions() {
     fi
 
     # Top-level commands
-    local commands="greet setup ssh auth ping sync launch set_env set_hosts \
-docker-build docker-up docker-join docker-list docker-clean vcs cd --help --version"
+    local commands="greet setup ssh exec auth ping sync launch set_env set_hosts \
+docker-build docker-up docker-join docker-list docker-clean vcs a cd --help --version"
 
     # Position 1: complete the sub-command
     if [[ $cword -eq 1 ]]; then
@@ -180,6 +225,12 @@ docker-build docker-up docker-join docker-list docker-clean vcs cd --help --vers
     fi
 
     local cmd="${words[1]}"
+
+    # --address=<TAB>: complete a system's address names (system is words[2]) for any command.
+    if [[ "$eq_opt" == "--address" ]]; then
+        COMPREPLY=( $(compgen -W "$(_airlab_address_names "${words[2]}")" -- "$cur") )
+        return
+    fi
 
     case "$cmd" in
         setup)
@@ -190,7 +241,7 @@ docker-build docker-up docker-join docker-list docker-clean vcs cd --help --vers
             fi
             # Remaining positions: options
             if [[ "$cur" == --* ]]; then
-                COMPREPLY=( $(compgen -W "--path= --force --password --help" -- "$cur") )
+                COMPREPLY=( $(compgen -W "--path= --address= --force --password --help" -- "$cur") )
             fi
             ;;
 
@@ -199,7 +250,21 @@ docker-build docker-up docker-join docker-list docker-clean vcs cd --help --vers
                 COMPREPLY=( $(compgen -W "$(_airlab_robot_names) --help" -- "$cur") )
                 return
             fi
-            COMPREPLY=( $(compgen -W "--password --help" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--address= --password --help" -- "$cur") )
+            ;;
+
+        exec)
+            # Position 2: target robot/system name
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "$(_airlab_robot_names) --help" -- "$cur") )
+                return
+            fi
+            # After -c/--cli the rest is a free-form remote command — nothing to complete.
+            local i
+            for (( i=2; i < cword; i++ )); do
+                [[ "${words[i]}" == "-c" || "${words[i]}" == "--cli" ]] && return
+            done
+            COMPREPLY=( $(compgen -W "--address= --cli -c --help" -- "$cur") )
             ;;
 
         auth)
@@ -207,7 +272,7 @@ docker-build docker-up docker-join docker-list docker-clean vcs cd --help --vers
                 COMPREPLY=( $(compgen -W "$(_airlab_robot_names) --help" -- "$cur") )
                 return
             fi
-            COMPREPLY=( $(compgen -W "--help" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--address= --help" -- "$cur") )
             ;;
 
         ping)
@@ -215,7 +280,7 @@ docker-build docker-up docker-join docker-list docker-clean vcs cd --help --vers
                 COMPREPLY=( $(compgen -W "$(_airlab_robot_names) --help" -- "$cur") )
                 return
             fi
-            COMPREPLY=( $(compgen -W "--help" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--address= --help" -- "$cur") )
             ;;
 
         sync)
@@ -228,7 +293,7 @@ docker-build docker-up docker-join docker-list docker-clean vcs cd --help --vers
                 _airlab_complete_path_value
                 return
             fi
-            COMPREPLY=( $(compgen -W "--dry-run --delete --path= --exclude= --time --progress --password --help" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--dry-run --delete --path= --exclude= --time --progress --address= --password --help" -- "$cur") )
             ;;
 
         launch)
@@ -236,7 +301,7 @@ docker-build docker-up docker-join docker-list docker-clean vcs cd --help --vers
                 COMPREPLY=( $(compgen -W "$(_airlab_targets) --help" -- "$cur") )
                 return
             fi
-            COMPREPLY=( $(compgen -W "--yaml_file= --stop --password --help" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--yaml_file= --stop --address= --password --help" -- "$cur") )
             ;;
 
         set_env)
@@ -246,7 +311,7 @@ docker-build docker-up docker-join docker-list docker-clean vcs cd --help --vers
             fi
             # Position 4+: options after the ENV_VARIABLE argument
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=( $(compgen -W "--password --help -h" -- "$cur") )
+                COMPREPLY=( $(compgen -W "--address= --password --help -h" -- "$cur") )
             fi
             ;;
 
@@ -255,7 +320,7 @@ docker-build docker-up docker-join docker-list docker-clean vcs cd --help --vers
                 COMPREPLY=( $(compgen -W "$(_airlab_targets) --help" -- "$cur") )
                 return
             fi
-            COMPREPLY=( $(compgen -W "--password --help" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--address= --password --help" -- "$cur") )
             ;;
 
         docker-build)
@@ -285,6 +350,20 @@ docker-build docker-up docker-join docker-list docker-clean vcs cd --help --vers
         cd)
             _airlab_complete_cd
             return
+            ;;
+
+        a)
+            # Typing a flag → complete alias-level flags.
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=( $(compgen -W "--help --lint --new" -- "$cur") )
+                return
+            fi
+            # Position 2 → complete alias names; deeper → just --help.
+            if [[ $cword -eq 2 ]]; then
+                _airlab_complete_alias
+                return
+            fi
+            COMPREPLY=( $(compgen -W "--help" -- "$cur") )
             ;;
 
         vcs)
